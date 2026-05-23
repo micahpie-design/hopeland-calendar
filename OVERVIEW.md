@@ -96,17 +96,18 @@ https://micahpie-design.github.io/hopeland-calendar/merged.ics
 
 ---
 
-### Importing the merged feed into each platform
+### Live sync configuration (as deployed)
 
-Paste the URL above into each platform's iCal import setting:
+| Platform  | Imports                                      | Notes |
+|-----------|----------------------------------------------|-------|
+| Airbnb    | `merged.ics` (GitHub Pages)                  | Blocks dates from all 3 platforms |
+| RVshare   | `merged.ics` (GitHub Pages)                  | Blocks dates from all 3 platforms |
+| Outdoorsy | Airbnb iCal + RVshare iCal (direct)          | Outdoorsy does not support iCal import of external URLs the same way; pointed directly at the other two platform feeds as a workaround |
 
-| Platform   | Where to find iCal import |
-|------------|---------------------------|
-| Airbnb     | Calendar → Availability → Import/Export Calendar |
-| Outdoorsy  | Calendar → Sync / iCal Import |
-| RVshare    | Calendar → iCal Sync → Add Calendar |
-
-Each platform will re-check the URL and block new dates automatically (typically every 1–6 hours).
+**Coverage is complete** — every booking on any platform eventually blocks the other two:
+- Airbnb booking → merged.ics → RVshare blocks it; Outdoorsy reads Airbnb directly → blocks it
+- RVshare booking → merged.ics → Airbnb blocks it; Outdoorsy reads RVshare directly → blocks it
+- Outdoorsy booking → merged.ics → Airbnb blocks it; merged.ics → RVshare blocks it
 
 ---
 

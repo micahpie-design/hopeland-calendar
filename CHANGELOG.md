@@ -4,6 +4,13 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-23] — Document actual live sync configuration
+
+### Changed
+- `OVERVIEW.md` — updated sync configuration table to reflect actual deployment: Airbnb and RVshare import merged.ics from GitHub Pages; Outdoorsy (which does not support external iCal import) is pointed directly at Airbnb and RVshare iCal feeds. Full cross-platform coverage confirmed.
+
+---
+
 ## [2026-05-23] — Add Windows startup task
 
 ### Added
