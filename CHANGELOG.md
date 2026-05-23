@@ -4,6 +4,14 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-23] — Add Windows startup task
+
+### Added
+- `run_silent.vbs` — VBScript launcher that starts `calendar_dashboard.js` silently (no console window) via `wscript.exe`
+- Windows Task Scheduler task "Hopeland Calendar Sync" registered to run at login for current user; restarts up to 3 times if it crashes (2-min interval)
+
+---
+
 ## [2026-05-23] — Add feed status panel and sync log to dashboard
 
 ### Changed
