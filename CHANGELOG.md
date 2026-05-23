@@ -4,6 +4,13 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-23] — Fix Node.js version in workflow
+
+### Changed
+- `sync.yml` — updated Node.js from 20 to 24 to clear GitHub Actions deprecation warning (Node.js 20 removed from runners Sept 16, 2026)
+
+---
+
 ## [2026-05-23] — Initial build
 
 ### Added
