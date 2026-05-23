@@ -1,0 +1,26 @@
+# Changelog
+
+All changes to this project are documented here.
+
+---
+
+## [2026-05-23] — Initial build
+
+### Added
+- `calendar_dashboard.js` — Local Node.js web server (port 3031). Fetches all three iCal feeds, serves a FullCalendar dashboard with color-coded bookings, detects date conflicts, auto-refreshes every 5 minutes.
+- `Start Dashboard.bat` — Windows double-click launcher; starts the Node.js server and opens the browser automatically.
+- `generate_ical.js` — GitHub Actions script. Reads iCal feed URLs from environment variables (`ICAL_RVSHARE`, `ICAL_OUTDOORSY`, `ICAL_AIRBNB`), fetches and merges all three feeds, writes `merged.ics`.
+- `.github/workflows/sync.yml` — GitHub Actions workflow that runs `generate_ical.js` every 30 minutes and commits the updated `merged.ics` back to the repo.
+- `merged.ics` — Auto-generated merged iCal file served publicly via GitHub Pages. Imported by each platform to keep availability in sync.
+- `index.html` — GitHub Pages landing page that displays the public `merged.ics` URL.
+- `OVERVIEW.md` — Full project documentation, file structure, setup instructions, and maintenance guide.
+- `CHANGELOG.md` — This file.
+
+### Platforms connected
+- RVshare
+- Outdoorsy
+- Airbnb
+
+### Tested
+- Local dashboard: all 3 feeds fetch successfully, HTML served at `/`, API at `/api/events`
+- `generate_ical.js`: 3 Airbnb events written to `merged.ics`; RVshare and Outdoorsy returned 0 events (no current bookings)

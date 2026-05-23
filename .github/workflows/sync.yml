@@ -1,0 +1,37 @@
+name: Sync Calendar Feeds
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # every 30 minutes
+  workflow_dispatch:           # lets you trigger it manually from GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Generate merged.ics
+        env:
+          ICAL_RVSHARE:   ${{ secrets.ICAL_RVSHARE }}
+          ICAL_OUTDOORSY: ${{ secrets.ICAL_OUTDOORSY }}
+          ICAL_AIRBNB:    ${{ secrets.ICAL_AIRBNB }}
+        run: node generate_ical.js
+
+      - name: Commit and push merged.ics
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add merged.ics
+          git diff --staged --quiet || git commit -m "chore: update merged.ics [skip ci]"
+          git push
