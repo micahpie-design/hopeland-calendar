@@ -4,6 +4,13 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-23] — Add feed status panel and sync log to dashboard
+
+### Changed
+- `calendar_dashboard.js` — added Feed Status panel (per-platform event count, fetch time in ms, ok/error badge) and persistent Sync Log (last 50 entries stored in browser localStorage, survives page reload). API response now includes `stats` object with per-feed timing and `fetchedAt` timestamp.
+
+---
+
 ## [2026-05-23] — Fix Node.js version in workflow
 
 ### Changed

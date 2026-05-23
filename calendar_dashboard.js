@@ -31,7 +31,6 @@ const FEEDS = {
 function fetchUrl(url) {
   return new Promise((resolve, reject) => {
     const req = https.get(url, { rejectUnauthorized: false, headers: { 'User-Agent': 'Mozilla/5.0' } }, (res) => {
-      // Follow one redirect (Airbnb does this)
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
         return fetchUrl(res.headers.location).then(resolve).catch(reject);
       }
@@ -45,7 +44,6 @@ function fetchUrl(url) {
 }
 
 function unfold(text) {
-  // iCal line-folding: continuation lines start with a space or tab
   return text.replace(/\r?\n[ \t]/g, '');
 }
 
@@ -104,18 +102,35 @@ function findConflicts(bookings) {
 // ─── Build payload ────────────────────────────────────────────────────────────
 
 async function buildPayload() {
-  const fcEvents  = [];
-  const bookings  = [];
-  const errors    = [];
+  const fcEvents = [];
+  const bookings = [];
+  const errors   = [];
+  const stats    = {};
+  const fetchedAt = new Date().toISOString();
 
   await Promise.all(Object.entries(FEEDS).map(async ([key, feed]) => {
+    const t0 = Date.now();
     let parsed = [];
+    let status = 'ok';
+    let errMsg = null;
+
     try {
       const raw = await fetchUrl(feed.url);
       parsed = parseICal(raw);
     } catch (err) {
+      status = 'error';
+      errMsg = err.message;
       errors.push(`${feed.label}: ${err.message}`);
     }
+
+    stats[key] = {
+      label:   feed.label,
+      color:   feed.color,
+      count:   parsed.length,
+      fetchMs: Date.now() - t0,
+      status,
+      error:   errMsg,
+    };
 
     for (const ev of parsed) {
       const start = toDateStr(ev['DTSTART']);
@@ -153,7 +168,7 @@ async function buildPayload() {
     });
   }
 
-  return { events: fcEvents, conflicts, errors };
+  return { events: fcEvents, conflicts, errors, stats, fetchedAt };
 }
 
 // ─── HTML ─────────────────────────────────────────────────────────────────────
@@ -193,7 +208,44 @@ const HTML = `<!DOCTYPE html>
   .leg { display: flex; align-items: center; gap: 7px; font-size: 0.85rem; font-weight: 500; }
   .legdot { width: 12px; height: 12px; border-radius: 3px; }
 
-  #cal-wrap { padding: 20px 28px 30px; }
+  /* Feed status + log panels */
+  .panels { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; padding: 16px 28px 0; }
+  @media (max-width: 800px) { .panels { grid-template-columns: 1fr; } }
+
+  .panel { background: white; border-radius: 8px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.07); }
+  .panel-title {
+    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: #a0aec0; margin-bottom: 12px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .panel-title button {
+    font-size: 0.68rem; background: none; border: 1px solid #e2e8f0;
+    border-radius: 4px; padding: 2px 7px; color: #718096; cursor: pointer;
+  }
+  .panel-title button:hover { background: #f7fafc; }
+
+  /* Feed status table */
+  #feed-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  #feed-table th { text-align: left; font-weight: 600; color: #718096; padding: 4px 8px 8px 0; border-bottom: 1px solid #e2e8f0; font-size: 0.75rem; }
+  #feed-table td { padding: 7px 8px 7px 0; border-bottom: 1px solid #f7fafc; vertical-align: middle; }
+  #feed-table tr:last-child td { border-bottom: none; }
+  .feed-dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; vertical-align: middle; }
+  .badge { display: inline-block; padding: 1px 7px; border-radius: 10px; font-size: 0.72rem; font-weight: 600; }
+  .badge-ok    { background: #c6f6d5; color: #276749; }
+  .badge-error { background: #fed7d7; color: #9b2c2c; }
+  .ms { color: #a0aec0; font-size: 0.75rem; }
+
+  /* Sync log */
+  #sync-log { max-height: 180px; overflow-y: auto; font-size: 0.78rem; }
+  .log-entry { display: grid; grid-template-columns: 140px 1fr; gap: 8px; padding: 5px 0; border-bottom: 1px solid #f7fafc; }
+  .log-entry:last-child { border-bottom: none; }
+  .log-time { color: #718096; font-family: monospace; font-size: 0.75rem; white-space: nowrap; }
+  .log-detail { color: #4a5568; }
+  .log-detail .ok   { color: #276749; font-weight: 600; }
+  .log-detail .warn { color: #c05621; font-weight: 600; }
+  .log-empty { color: #cbd5e0; font-style: italic; font-size: 0.8rem; padding: 8px 0; }
+
+  #cal-wrap { padding: 16px 28px 30px; }
   #calendar { background: white; border-radius: 10px; padding: 20px; box-shadow: 0 1px 6px rgba(0,0,0,.08); }
 
   .fc-event { cursor: default; border: none !important; }
@@ -228,22 +280,110 @@ const HTML = `<!DOCTYPE html>
   <div class="leg"><div class="legdot" style="background:#8e44ad;opacity:.55"></div> Conflict</div>
 </div>
 
+<div class="panels">
+  <!-- Feed Status -->
+  <div class="panel">
+    <div class="panel-title">Feed Status</div>
+    <table id="feed-table">
+      <thead>
+        <tr>
+          <th>Platform</th>
+          <th>Events</th>
+          <th>Fetch</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="feed-tbody">
+        <tr><td colspan="4" style="color:#cbd5e0;font-style:italic;padding:8px 0">Loading&hellip;</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Sync Log -->
+  <div class="panel">
+    <div class="panel-title">
+      Sync Log
+      <button onclick="clearLog()">Clear</button>
+    </div>
+    <div id="sync-log"><div class="log-empty">No syncs recorded yet.</div></div>
+  </div>
+</div>
+
 <div id="cal-wrap"><div id="calendar"></div></div>
 
-<footer>Auto-refreshes every 5 minutes &nbsp;&middot;&nbsp; Hopeland Calendar Sync</footer>
+<footer>Auto-refreshes every 5 minutes &nbsp;&middot;&nbsp; Hopeland Calendar Sync &nbsp;&middot;&nbsp; GitHub sync runs every 30 min</footer>
 
 <script>
 let cal;
+const LOG_KEY = 'hopeland_sync_log';
+const LOG_MAX = 50;
 
 function fmtDate(d) {
   return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
+
+function fmtTime(iso) {
+  return new Date(iso).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true });
+}
+
+// ── Sync log (persisted in localStorage) ──────────────────────────────────────
+
+function getLog() {
+  try { return JSON.parse(localStorage.getItem(LOG_KEY) || '[]'); } catch { return []; }
+}
+
+function appendLog(entry) {
+  const log = getLog();
+  log.unshift(entry);
+  if (log.length > LOG_MAX) log.length = LOG_MAX;
+  localStorage.setItem(LOG_KEY, JSON.stringify(log));
+}
+
+function clearLog() {
+  localStorage.removeItem(LOG_KEY);
+  renderLog();
+}
+
+function renderLog() {
+  const log = getLog();
+  const el  = document.getElementById('sync-log');
+  if (!log.length) { el.innerHTML = '<div class="log-empty">No syncs recorded yet.</div>'; return; }
+  el.innerHTML = log.map(e => {
+    const counts = Object.entries(e.counts)
+      .map(([k, v]) => \`\${k}: \${v}\`)
+      .join(', ');
+    const conflict = e.conflicts > 0
+      ? \`<span class="warn"> &bull; \${e.conflicts} conflict(s)</span>\`
+      : \`<span class="ok"> &bull; OK</span>\`;
+    return \`<div class="log-entry">
+      <div class="log-time">\${fmtTime(e.time)}</div>
+      <div class="log-detail">\${counts}\${conflict}\${e.error ? ' <span style="color:#e53e3e">&bull; error</span>' : ''}</div>
+    </div>\`;
+  }).join('');
+}
+
+// ── Feed status table ─────────────────────────────────────────────────────────
+
+function renderFeedStatus(stats) {
+  const tbody = document.getElementById('feed-tbody');
+  tbody.innerHTML = Object.entries(stats).map(([, s]) => \`
+    <tr>
+      <td><span class="feed-dot" style="background:\${s.color}"></span>\${s.label}</td>
+      <td><strong>\${s.count}</strong></td>
+      <td class="ms">\${s.fetchMs}ms</td>
+      <td><span class="badge badge-\${s.status}">\${s.status === 'ok' ? 'OK' : 'Error'}</span></td>
+    </tr>
+  \`).join('');
+}
+
+// ── Main load ─────────────────────────────────────────────────────────────────
 
 async function load() {
   const dot    = document.getElementById('dot');
   const status = document.getElementById('status');
   const banner = document.getElementById('conflict-banner');
   const list   = document.getElementById('conflict-list');
+
   try {
     const r    = await fetch('/api/events');
     if (!r.ok) throw new Error('Server error ' + r.status);
@@ -252,6 +392,23 @@ async function load() {
     cal.removeAllEvents();
     cal.addEventSource(data.events);
 
+    // Feed status panel
+    if (data.stats) renderFeedStatus(data.stats);
+
+    // Sync log entry
+    const counts = {};
+    if (data.stats) {
+      for (const [, s] of Object.entries(data.stats)) counts[s.label] = s.count;
+    }
+    appendLog({
+      time:      data.fetchedAt || new Date().toISOString(),
+      counts,
+      conflicts: data.conflicts ? data.conflicts.length : 0,
+      error:     data.errors && data.errors.length > 0,
+    });
+    renderLog();
+
+    // Conflict banner
     if (data.conflicts && data.conflicts.length > 0) {
       banner.style.display = 'block';
       list.innerHTML = data.conflicts.map(c =>
@@ -274,6 +431,8 @@ async function load() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+  renderLog(); // show persisted log immediately on page load
+
   cal = new FullCalendar.Calendar(document.getElementById('calendar'), {
     initialView: 'dayGridMonth',
     headerToolbar: { left: 'prev,next today', center: 'title', right: 'dayGridMonth,dayGridWeek' },
