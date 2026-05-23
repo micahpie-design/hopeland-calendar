@@ -4,6 +4,13 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-23] — Add GitHub Actions run history to sync log
+
+### Changed
+- `calendar_dashboard.js` — added `/api/github-runs` endpoint that pulls the last 20 workflow runs from the GitHub API (cached server-side for 5 min to respect rate limits). Sync Log now merges local fetch history and GitHub workflow runs into one chronological timeline. LOCAL entries (blue badge) show per-platform event counts; GITHUB entries (dark badge) show run number, conclusion, duration, and a direct link to the run on GitHub.
+
+---
+
 ## [2026-05-23] — Document actual live sync configuration
 
 ### Changed
