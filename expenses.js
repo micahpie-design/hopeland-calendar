@@ -364,7 +364,10 @@ function bookingsPage() {
       <td class="num">${b.expense_total > 0 ? fmt$(b.expense_total) : '—'}</td>
       <td class="num">${b.kwh ? b.kwh + ' kWh' : '—'}</td>
       <td class="num"><strong>${fmt$(b.payout - b.expense_total)}</strong></td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteBooking(${b.id})">✕</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-sm" onclick="editBooking(${b.id})" style="margin-right:4px">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteBooking(${b.id})">✕</button>
+      </td>
     </tr>`).join('') : `<tr><td colspan="10"><div class="empty-state"><div class="icon">📋</div>No bookings yet — add your first one.</div></td></tr>`;
 
   return pageShell('/bookings', 'Bookings', `
@@ -422,6 +425,34 @@ function bookingsPage() {
     </div>
   </div>
 </div>
+
+<!-- Edit Booking Modal -->
+<div class="modal-bg" id="edit-booking-modal">
+  <div class="modal">
+    <div class="modal-title">Edit Booking <button onclick="document.getElementById('edit-booking-modal').classList.remove('open')">✕</button></div>
+    <input type="hidden" id="eb-id" />
+    <div class="form-grid" style="gap:14px">
+      <div class="field"><label>Platform</label>
+        <select id="eb-platform"><option value="airbnb">Airbnb</option><option value="rvshare">RVshare</option><option value="outdoorsy">Outdoorsy</option></select></div>
+      <div class="field"><label>Guest Name</label><input id="eb-guest" /></div>
+      <div class="field"><label>Check-in</label><input id="eb-checkin" type="date" /></div>
+      <div class="field"><label>Check-out</label><input id="eb-checkout" type="date" /></div>
+      <div class="field"><label>Nights</label><input id="eb-nights" type="number" min="1" /></div>
+      <div class="field"><label>Rate / Night ($)</label><input id="eb-rate" type="number" step="0.01" /></div>
+      <div class="field"><label>Cleaning Fee ($)</label><input id="eb-cleaning" type="number" step="0.01" /></div>
+      <div class="field"><label>Service Fee ($)</label><input id="eb-service" type="number" step="0.01" /></div>
+      <div class="field"><label>Gross Revenue ($)</label><input id="eb-gross" type="number" step="0.01" /></div>
+      <div class="field"><label>Payout Received ($)</label><input id="eb-payout" type="number" step="0.01" /></div>
+      <div class="field"><label>Payout Date</label><input id="eb-paydate" type="date" /></div>
+      <div class="field"><label>Confirmation Code</label><input id="eb-confirm" /></div>
+    </div>
+    <div class="field" style="margin-top:12px"><label>Notes</label><textarea id="eb-notes" rows="2"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="document.getElementById('edit-booking-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditBooking()">Save Changes</button>
+    </div>
+  </div>
+</div>
 `, `
 // Auto-calc nights from dates
 ['f-checkin','f-checkout'].forEach(id => document.getElementById(id).addEventListener('change', () => {
@@ -458,6 +489,48 @@ async function deleteBooking(id) {
   if (!confirm('Delete this booking? Associated expenses and electricity records will remain.')) return;
   const r = await api('DELETE', '/api/bookings/' + id);
   if (r.ok) location.reload(); else showMsg(r.error || 'Error.', 'err');
+}
+
+async function editBooking(id) {
+  const d = await api('GET', '/api/bookings/' + id);
+  if (!d.id) return showMsg('Could not load booking.', 'err');
+  document.getElementById('eb-id').value       = d.id;
+  document.getElementById('eb-platform').value = d.platform || 'airbnb';
+  document.getElementById('eb-guest').value     = d.guest_name || '';
+  document.getElementById('eb-checkin').value   = d.check_in  || '';
+  document.getElementById('eb-checkout').value  = d.check_out || '';
+  document.getElementById('eb-nights').value    = d.nights    || '';
+  document.getElementById('eb-rate').value      = d.rate_per_night || '';
+  document.getElementById('eb-cleaning').value  = d.cleaning_fee   || '';
+  document.getElementById('eb-service').value   = d.service_fee    || '';
+  document.getElementById('eb-gross').value     = d.gross_revenue  || '';
+  document.getElementById('eb-payout').value    = d.payout         || '';
+  document.getElementById('eb-paydate').value   = d.payout_date    || '';
+  document.getElementById('eb-confirm').value   = d.confirmation   || '';
+  document.getElementById('eb-notes').value     = d.notes          || '';
+  document.getElementById('edit-booking-modal').classList.add('open');
+}
+
+async function saveEditBooking() {
+  const id = document.getElementById('eb-id').value;
+  const data = {
+    platform:      document.getElementById('eb-platform').value,
+    guest_name:    document.getElementById('eb-guest').value.trim(),
+    check_in:      document.getElementById('eb-checkin').value,
+    check_out:     document.getElementById('eb-checkout').value,
+    nights:        parseInt(document.getElementById('eb-nights').value)    || 0,
+    rate_per_night:parseFloat(document.getElementById('eb-rate').value)    || 0,
+    cleaning_fee:  parseFloat(document.getElementById('eb-cleaning').value)|| 0,
+    service_fee:   parseFloat(document.getElementById('eb-service').value) || 0,
+    gross_revenue: parseFloat(document.getElementById('eb-gross').value)   || 0,
+    payout:        parseFloat(document.getElementById('eb-payout').value)  || 0,
+    payout_date:   document.getElementById('eb-paydate').value,
+    confirmation:  document.getElementById('eb-confirm').value.trim(),
+    notes:         document.getElementById('eb-notes').value.trim(),
+  };
+  if (!data.guest_name || !data.check_in || !data.check_out) return alert('Guest name and dates are required.');
+  const r = await api('PUT', '/api/bookings/' + id, data);
+  if (r.ok) location.reload(); else showMsg(r.error || 'Error saving.', 'err');
 }
 
 async function importCSV(file) {
@@ -522,7 +595,10 @@ function expensesPage() {
         <td class="num">${fmt$(e.item_total)}</td>
         <td class="num"><strong>${fmt$(e.rental_total)}</strong></td>
         <td>${e.receipt_file ? `<a href="/uploads/receipts/${e.receipt_file}" target="_blank" style="color:#4299e1;font-size:.75rem">📄 View</a>` : '—'}</td>
-        <td><button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">✕</button></td>
+        <td style="white-space:nowrap">
+          <button class="btn btn-secondary btn-sm" onclick="editExpense(${e.id})" style="margin-right:4px">Edit</button>
+          <button class="btn btn-danger btn-sm" onclick="deleteExpense(${e.id})">✕</button>
+        </td>
       </tr>${itemRows}`;
   }).join('') : `<tr><td colspan="8"><div class="empty-state"><div class="icon">🧾</div>No expenses yet — upload a receipt to get started.</div></td></tr>`;
 
@@ -581,6 +657,39 @@ function expensesPage() {
         <button class="btn btn-secondary" onclick="closeUpload()">Cancel</button>
         <button class="btn btn-primary" onclick="saveExpense()">Save Expense</button>
       </div>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Expense Modal -->
+<div class="modal-bg" id="edit-expense-modal">
+  <div class="modal">
+    <div class="modal-title">Edit Expense <button onclick="document.getElementById('edit-expense-modal').classList.remove('open')">✕</button></div>
+    <input type="hidden" id="ee-id" />
+    <div class="form-grid" style="gap:12px">
+      <div class="field"><label>Date</label><input id="ee-date" type="date" /></div>
+      <div class="field"><label>Assign to Booking</label><select id="ee-booking">${bookingOptions}</select></div>
+      <div class="field"><label>Vendor</label><input id="ee-vendor" /></div>
+      <div class="field"><label>Order #</label><input id="ee-order" /></div>
+      <div class="field"><label>Category</label>
+        <select id="ee-cat">
+          <option value="supplies">Supplies / Consumables</option>
+          <option value="equipment">Equipment / Capital</option>
+          <option value="cleaning">Cleaning</option>
+          <option value="maintenance">Maintenance / Repair</option>
+          <option value="other">Other</option>
+        </select></div>
+      <div class="field"><label>Description</label><input id="ee-desc" /></div>
+      <div class="field"><label>Subtotal ($)</label><input id="ee-subtotal" type="number" step="0.01" /></div>
+      <div class="field"><label>Tax ($)</label><input id="ee-tax" type="number" step="0.01" /></div>
+      <div class="field"><label>Total ($)</label><input id="ee-total" type="number" step="0.01" /></div>
+    </div>
+    <div style="margin:14px 0 6px;font-size:.78rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#a0aec0">Line Items — check = rental expense</div>
+    <div id="ee-items"></div>
+    <div class="field" style="margin-top:12px"><label>Notes</label><textarea id="ee-notes" rows="2"></textarea></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="document.getElementById('edit-expense-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditExpense()">Save Changes</button>
     </div>
   </div>
 </div>
@@ -708,6 +817,58 @@ async function deleteExpense(id) {
   const r = await api('DELETE', '/api/expenses/' + id);
   if (r.ok) location.reload(); else showMsg(r.error || 'Error.', 'err');
 }
+
+let _editItems = [];
+async function editExpense(id) {
+  const d = await api('GET', '/api/expenses/' + id);
+  if (!d.id) return showMsg('Could not load expense.', 'err');
+  _editItems = d.items || [];
+  document.getElementById('ee-id').value       = d.id;
+  document.getElementById('ee-date').value      = d.date         || '';
+  document.getElementById('ee-booking').value   = d.booking_id   || '';
+  document.getElementById('ee-vendor').value    = d.vendor       || '';
+  document.getElementById('ee-order').value     = d.order_number || '';
+  document.getElementById('ee-cat').value       = d.category     || 'supplies';
+  document.getElementById('ee-desc').value      = d.description  || '';
+  document.getElementById('ee-subtotal').value  = d.subtotal     || 0;
+  document.getElementById('ee-tax').value       = d.tax          || 0;
+  document.getElementById('ee-total').value     = d.total        || 0;
+  document.getElementById('ee-notes').value     = d.notes        || '';
+  const cats = ['supplies','equipment','cleaning','maintenance','other'];
+  const catOpts = cats.map(c => \`<option value="\${c}">\${c[0].toUpperCase()+c.slice(1)}</option>\`).join('');
+  document.getElementById('ee-items').innerHTML = _editItems.length
+    ? _editItems.map((it, i) => \`
+      <div class="item-check-row">
+        <input type="checkbox" id="ee-item-\${i}" \${it.is_rental ? 'checked' : ''} />
+        <label for="ee-item-\${i}" style="flex:1;cursor:pointer">\${it.description}\${it.quantity > 1 ? ' &times;' + it.quantity : ''}</label>
+        <span style="font-weight:600;white-space:nowrap">$\${Number(it.total).toFixed(2)}</span>
+      </div>\`).join('')
+    : '<p style="color:#a0aec0;font-size:.83rem">No line items</p>';
+  document.getElementById('edit-expense-modal').classList.add('open');
+}
+
+async function saveEditExpense() {
+  const id    = document.getElementById('ee-id').value;
+  const items = _editItems.map((it, i) => ({
+    ...it,
+    is_rental: document.getElementById('ee-item-'+i) ? (document.getElementById('ee-item-'+i).checked ? 1 : 0) : it.is_rental,
+  }));
+  const body = {
+    booking_id:   document.getElementById('ee-booking').value  || null,
+    date:         document.getElementById('ee-date').value,
+    vendor:       document.getElementById('ee-vendor').value.trim(),
+    order_number: document.getElementById('ee-order').value.trim(),
+    category:     document.getElementById('ee-cat').value,
+    description:  document.getElementById('ee-desc').value.trim(),
+    subtotal:     parseFloat(document.getElementById('ee-subtotal').value) || 0,
+    tax:          parseFloat(document.getElementById('ee-tax').value)      || 0,
+    total:        parseFloat(document.getElementById('ee-total').value)    || 0,
+    notes:        document.getElementById('ee-notes').value.trim(),
+    items,
+  };
+  const r = await api('PUT', '/api/expenses/' + id, body);
+  if (r.ok) location.reload(); else showMsg(r.error || 'Error saving.', 'err');
+}
 `);
 }
 
@@ -758,7 +919,10 @@ function electricityPage() {
       <td class="num">${cost}</td>
       <td>${r.notes || '—'}</td>
       <td>${r.screenshot_file ? `<a href="/uploads/electricity/${r.screenshot_file}" target="_blank" style="color:#4299e1;font-size:.75rem">📷 View</a>` : '—'}</td>
-      <td><button class="btn btn-danger btn-sm" onclick="deleteReading(${r.id})">✕</button></td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-secondary btn-sm" onclick="editReading(${r.id})" style="margin-right:4px">Edit</button>
+        <button class="btn btn-danger btn-sm" onclick="deleteReading(${r.id})">✕</button>
+      </td>
     </tr>`;
   }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="icon">⚡</div>No electricity readings yet.</div></td></tr>`;
 
@@ -809,6 +973,27 @@ function electricityPage() {
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="document.getElementById('rate-modal').classList.remove('open')">Cancel</button>
       <button class="btn btn-primary" onclick="saveRates()">Save Rates</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Reading Modal -->
+<div class="modal-bg" id="edit-elec-modal">
+  <div class="modal">
+    <div class="modal-title">Edit Reading <button onclick="document.getElementById('edit-elec-modal').classList.remove('open')">✕</button></div>
+    <input type="hidden" id="er-id" />
+    <div class="field" style="margin-bottom:14px"><label>Assign to Booking</label>
+      <select id="er-booking">${bookingOptions}</select></div>
+    <div class="form-grid" style="gap:12px;margin-bottom:14px">
+      <div class="field"><label>Reading Date</label><input id="er-date" type="date" /></div>
+      <div class="field"><label>Energy Used (kWh)</label><input id="er-kwh" type="number" step="0.1" /></div>
+    </div>
+    <div class="field" style="margin-bottom:14px"><label>Notes</label>
+      <textarea id="er-notes" rows="2"></textarea></div>
+    <p style="font-size:.78rem;color:#a0aec0">Screenshot cannot be changed here — delete and re-add the reading to upload a new one.</p>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="document.getElementById('edit-elec-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveEditReading()">Save Changes</button>
     </div>
   </div>
 </div>
@@ -880,6 +1065,30 @@ async function deleteReading(id) {
   if (!confirm('Delete this electricity reading?')) return;
   const r = await api('DELETE', '/api/electricity/' + id);
   if (r.ok) location.reload(); else showMsg(r.error || 'Error.', 'err');
+}
+
+async function editReading(id) {
+  const d = await api('GET', '/api/electricity/' + id);
+  if (!d.id) return showMsg('Could not load reading.', 'err');
+  document.getElementById('er-id').value      = d.id;
+  document.getElementById('er-booking').value = d.booking_id    || '';
+  document.getElementById('er-date').value    = d.reading_date  || '';
+  document.getElementById('er-kwh').value     = d.kwh           || '';
+  document.getElementById('er-notes').value   = d.notes         || '';
+  document.getElementById('edit-elec-modal').classList.add('open');
+}
+
+async function saveEditReading() {
+  const id = document.getElementById('er-id').value;
+  const body = {
+    booking_id:   document.getElementById('er-booking').value || null,
+    reading_date: document.getElementById('er-date').value,
+    kwh:          parseFloat(document.getElementById('er-kwh').value) || 0,
+    notes:        document.getElementById('er-notes').value.trim(),
+  };
+  if (!body.kwh) return alert('Please enter a kWh value.');
+  const r = await api('PUT', '/api/electricity/' + id, body);
+  if (r.ok) location.reload(); else showMsg(r.error || 'Error saving.', 'err');
 }
 `);
 }
@@ -1030,10 +1239,24 @@ module.exports = async function handleRequest(req, res) {
     } catch (e) { sendJson(res, { error: e.message }, 400); }
     return;
   }
-  const bDel = p.match(/^\/api\/bookings\/(\d+)$/);
-  if (bDel && method === 'DELETE') {
-    db.prepare('DELETE FROM bookings WHERE id=?').run(parseInt(bDel[1]));
-    sendJson(res, { ok: true }); return;
+  const bId = p.match(/^\/api\/bookings\/(\d+)$/);
+  if (bId) {
+    const id = parseInt(bId[1]);
+    if (method === 'GET') {
+      sendJson(res, db.prepare('SELECT * FROM bookings WHERE id=?').get(id) || {}); return;
+    }
+    if (method === 'PUT') {
+      try {
+        const d = JSON.parse(await readBody(req));
+        db.prepare(`UPDATE bookings SET platform=@platform,guest_name=@guest_name,confirmation=@confirmation,
+          check_in=@check_in,check_out=@check_out,nights=@nights,rate_per_night=@rate_per_night,
+          cleaning_fee=@cleaning_fee,service_fee=@service_fee,gross_revenue=@gross_revenue,
+          payout=@payout,payout_date=@payout_date,notes=@notes WHERE id=@id`).run({ ...d, id });
+        sendJson(res, { ok: true });
+      } catch (e) { sendJson(res, { error: e.message }, 400); }
+      return;
+    }
+    if (method === 'DELETE') { db.prepare('DELETE FROM bookings WHERE id=?').run(id); sendJson(res, { ok: true }); return; }
   }
 
   // ── Settings ───────────────────────────────────────────────────────────────
@@ -1086,10 +1309,28 @@ module.exports = async function handleRequest(req, res) {
     } catch (e) { sendJson(res, { error: e.message }, 400); }
     return;
   }
-  const eDel = p.match(/^\/api\/expenses\/(\d+)$/);
-  if (eDel && method === 'DELETE') {
-    db.prepare('DELETE FROM expenses WHERE id=?').run(parseInt(eDel[1]));
-    sendJson(res, { ok: true }); return;
+  const eId = p.match(/^\/api\/expenses\/(\d+)$/);
+  if (eId) {
+    const id = parseInt(eId[1]);
+    if (method === 'GET') {
+      const exp = db.prepare('SELECT * FROM expenses WHERE id=?').get(id);
+      if (exp) exp.items = db.prepare('SELECT * FROM expense_items WHERE expense_id=? ORDER BY id').all(id);
+      sendJson(res, exp || {}); return;
+    }
+    if (method === 'PUT') {
+      try {
+        const d = JSON.parse(await readBody(req));
+        db.prepare(`UPDATE expenses SET booking_id=@booking_id,date=@date,vendor=@vendor,order_number=@order_number,
+          category=@category,description=@description,subtotal=@subtotal,tax=@tax,total=@total,notes=@notes WHERE id=@id`)
+          .run({ ...d, id });
+        db.prepare('DELETE FROM expense_items WHERE expense_id=?').run(id);
+        const ins = db.prepare(`INSERT INTO expense_items (expense_id,description,quantity,unit_price,total,is_rental) VALUES (?,?,?,?,?,?)`);
+        for (const it of (d.items || [])) ins.run(id, it.description, it.quantity||1, it.unit_price||0, it.total||0, it.is_rental??1);
+        sendJson(res, { ok: true });
+      } catch (e) { sendJson(res, { error: e.message }, 400); }
+      return;
+    }
+    if (method === 'DELETE') { db.prepare('DELETE FROM expenses WHERE id=?').run(id); sendJson(res, { ok: true }); return; }
   }
 
   // ── Electricity API ────────────────────────────────────────────────────────
@@ -1103,10 +1344,22 @@ module.exports = async function handleRequest(req, res) {
     } catch (e) { sendJson(res, { error: e.message }, 400); }
     return;
   }
-  const lDel = p.match(/^\/api\/electricity\/(\d+)$/);
-  if (lDel && method === 'DELETE') {
-    db.prepare('DELETE FROM electricity WHERE id=?').run(parseInt(lDel[1]));
-    sendJson(res, { ok: true }); return;
+  const lId = p.match(/^\/api\/electricity\/(\d+)$/);
+  if (lId) {
+    const id = parseInt(lId[1]);
+    if (method === 'GET') {
+      sendJson(res, db.prepare('SELECT * FROM electricity WHERE id=?').get(id) || {}); return;
+    }
+    if (method === 'PUT') {
+      try {
+        const d = JSON.parse(await readBody(req));
+        db.prepare(`UPDATE electricity SET booking_id=?,reading_date=?,kwh=?,notes=? WHERE id=?`)
+          .run(d.booking_id||null, d.reading_date, parseFloat(d.kwh), d.notes||'', id);
+        sendJson(res, { ok: true });
+      } catch (e) { sendJson(res, { error: e.message }, 400); }
+      return;
+    }
+    if (method === 'DELETE') { db.prepare('DELETE FROM electricity WHERE id=?').run(id); sendJson(res, { ok: true }); return; }
   }
 
   res.writeHead(404); res.end();
