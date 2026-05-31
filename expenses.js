@@ -141,50 +141,63 @@ function parseAirbnbDate(s) {
 function importAirbnbCSV(buffer) {
   const lines = buffer.toString('utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
     .split('\n').filter(l => l.trim());
-  if (lines.length < 2) return { imported: 0, skipped: 0 };
+  if (lines.length < 2) return { imported: 0, updated: 0 };
 
   const headers = parseCSVRow(lines[0]).map(h => h.trim());
   const col     = name => headers.indexOf(name);
+  const rows    = lines.slice(1).map(line => {
+    const v = parseCSVRow(line).map(f => f.trim());
+    return name => v[col(name)] || '';
+  });
 
-  const stmt = db.prepare(`INSERT OR IGNORE INTO bookings
+  // First pass: collect Payout rows — keyed by date, value is the exact paid-out amount.
+  // The fast_pay_fee only appears on Payout rows, not Reservation rows, so the only
+  // reliable payout figure is the "Paid out" column on those rows.
+  const payoutByDate = {};
+  for (const get of rows) {
+    if (get('Type') !== 'Payout') continue;
+    const paid = parseFloat(get('Paid out')) || 0;
+    if (get('Date') && paid > 0) payoutByDate[get('Date')] = paid;
+  }
+
+  const insertStmt = db.prepare(`INSERT OR IGNORE INTO bookings
     (platform,guest_name,confirmation,check_in,check_out,nights,rate_per_night,cleaning_fee,service_fee,gross_revenue,payout,notes)
     VALUES (@platform,@guest_name,@confirmation,@check_in,@check_out,@nights,@rate_per_night,@cleaning_fee,@service_fee,@gross_revenue,@payout,@notes)`);
+  const updateStmt = db.prepare(
+    `UPDATE bookings SET payout=?, gross_revenue=?, cleaning_fee=?, service_fee=?, nights=?
+     WHERE confirmation=? AND payout=0`);
+  const existsStmt = db.prepare('SELECT id, payout FROM bookings WHERE confirmation=?');
 
-  let imported = 0, skipped = 0;
-  for (const line of lines.slice(1)) {
-    const v   = parseCSVRow(line).map(f => f.trim());
-    const get = name => v[col(name)] || '';
+  let imported = 0, updated = 0;
+  for (const get of rows) {
     if (get('Type') !== 'Reservation') continue;
     const confirmation = get('Confirmation code');
     if (!confirmation) continue;
 
-    const nights       = parseInt(get('Nights'))         || 0;
+    const nights       = parseInt(get('Nights'))           || 0;
     const grossRevenue = parseFloat(get('Gross earnings')) || 0;
-    const cleaningFee  = parseFloat(get('Cleaning fee'))  || 0;
-    const serviceFee   = parseFloat(get('Service fee'))   || 0;
-    const fastPayFee   = parseFloat(get('Fast pay fee'))  || 0;
-    const payout       = fastPayFee > 0
-      ? +(grossRevenue - serviceFee - fastPayFee).toFixed(2) : 0;
-    const ratePerNight = nights > 0
-      ? +((grossRevenue - cleaningFee) / nights).toFixed(2) : 0;
+    const cleaningFee  = parseFloat(get('Cleaning fee'))   || 0;
+    const serviceFee   = parseFloat(get('Service fee'))    || 0;
+    // Payout row date matches Reservation Date field (= check-out date on past CSV)
+    const payout       = payoutByDate[get('Date')]         || 0;
+    const ratePerNight = nights > 0 ? +((grossRevenue - cleaningFee) / nights).toFixed(2) : 0;
 
-    const r = stmt.run({
-      platform:      'airbnb',
-      guest_name:    get('Guest'),
-      confirmation,
-      check_in:      parseAirbnbDate(get('Start date')),
-      check_out:     parseAirbnbDate(get('End date')),
-      nights,
-      rate_per_night: ratePerNight,
-      cleaning_fee:  cleaningFee,
-      service_fee:   serviceFee,
-      gross_revenue: grossRevenue,
-      payout,
-      notes: get('Booking date') ? `Booked: ${get('Booking date')}` : '',
-    });
-    if (r.changes) imported++; else skipped++;
+    const existing = existsStmt.get(confirmation);
+    if (!existing) {
+      insertStmt.run({
+        platform: 'airbnb', guest_name: get('Guest'), confirmation,
+        check_in: parseAirbnbDate(get('Start date')), check_out: parseAirbnbDate(get('End date')),
+        nights, rate_per_night: ratePerNight, cleaning_fee: cleaningFee,
+        service_fee: serviceFee, gross_revenue: grossRevenue, payout,
+        notes: get('Booking date') ? `Booked: ${get('Booking date')}` : '',
+      });
+      imported++;
+    } else if (payout > 0 && (existing.payout || 0) === 0) {
+      updateStmt.run(payout, grossRevenue, cleaningFee, serviceFee, nights, confirmation);
+      updated++;
+    }
   }
-  return { imported, skipped };
+  return { imported, updated };
 }
 
 // ─── Shared styles & nav ──────────────────────────────────────────────────────
@@ -451,8 +464,12 @@ async function importCSV(file) {
     const data = await r.json();
     if (data.error) { showMsg('Import error: ' + data.error, 'err'); }
     else {
-      showMsg('Imported ' + data.imported + ' booking(s) — ' + data.skipped + ' already existed.', 'ok');
-      if (data.imported > 0) setTimeout(() => location.reload(), 1500);
+      const parts = [];
+      if (data.imported) parts.push(data.imported + ' new booking(s) added');
+      if (data.updated)  parts.push(data.updated  + ' payout(s) updated');
+      if (!parts.length) parts.push('No changes — all bookings already up to date');
+      showMsg(parts.join(', ') + '.', 'ok');
+      if (data.imported || data.updated) setTimeout(() => location.reload(), 1500);
     }
   } catch (e) { showMsg('Import failed: ' + e.message, 'err'); }
   if (btn) btn.textContent = '⬆ Import Airbnb CSV';
