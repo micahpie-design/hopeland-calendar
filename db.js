@@ -70,6 +70,9 @@ db.exec(`
 
 db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);`);
 
+// Migration: add category column to expense_items if not present
+try { db.exec(`ALTER TABLE expense_items ADD COLUMN category TEXT DEFAULT 'supplies'`); } catch (_) {}
+
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_confirmation
   ON bookings(confirmation) WHERE confirmation IS NOT NULL AND confirmation != '';`);
 

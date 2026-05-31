@@ -4,6 +4,14 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-31] — Per-item category in expenses
+
+### Changed
+- `db.js` — added `category TEXT DEFAULT 'supplies'` column to `expense_items` via `ALTER TABLE` migration (safe to run on existing DB).
+- `expenses.js` — category is now tracked per line item, not just per expense header. Both the upload flow and the edit modal show a category dropdown for each item (`Supplies / Consumables`, `Equipment / Capital`, `Cleaning`, `Maintenance`, `Other`). Edit modal items now show the previously-saved category pre-selected. Expense list sub-rows show a grey category badge alongside the Rental/Personal badge. Server-side INSERT and PUT handlers updated to save and restore `category` per item.
+
+---
+
 ## [2026-05-31] — Fix Walmart PDF parser
 
 ### Changed

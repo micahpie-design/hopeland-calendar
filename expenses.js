@@ -598,13 +598,17 @@ function expensesPage() {
 
   const rows = expenses.length ? expenses.map(e => {
     const items = db.prepare('SELECT * FROM expense_items WHERE expense_id=? ORDER BY id').all(e.id);
+    const CAT_SHORT = { supplies:'Supplies', equipment:'Equipment', cleaning:'Cleaning', maintenance:'Maintenance', other:'Other' };
     const itemRows = items.map(i => `
       <tr style="background:#f7fafc;font-size:0.78rem">
         <td style="padding-left:24px;color:#718096">${i.description}</td>
         <td class="num" style="color:#718096">×${i.quantity}</td>
         <td class="num" style="color:#718096">${fmt$(i.unit_price)}</td>
         <td class="num" style="color:#718096">${fmt$(i.total)}</td>
-        <td class="num"><span class="badge ${i.is_rental ? 'badge-ok' : 'badge-warn'}">${i.is_rental ? 'Rental' : 'Personal'}</span></td>
+        <td class="num">
+          <span class="badge ${i.is_rental ? 'badge-ok' : 'badge-warn'}" style="margin-right:3px">${i.is_rental ? 'Rental' : 'Personal'}</span>
+          <span class="badge" style="background:#e2e8f0;color:#4a5568">${CAT_SHORT[i.category] || 'Supplies'}</span>
+        </td>
         <td></td>
       </tr>`).join('');
     return `
@@ -776,8 +780,8 @@ async function uploadPDF(file) {
   if (data.date) {
     const d = new Date(data.date); if (!isNaN(d)) document.getElementById('p-date').value = d.toISOString().slice(0,10);
   }
-  const cats = ['supplies','equipment','cleaning','maintenance','other'];
-  const catOpts = cats.map(c => \`<option value="\${c}">\${c.charAt(0).toUpperCase()+c.slice(1)}</option>\`).join('');
+  const CAT_LABELS = { supplies:'Supplies / Consumables', equipment:'Equipment / Capital', cleaning:'Cleaning', maintenance:'Maintenance', other:'Other' };
+  const catOpts = Object.entries(CAT_LABELS).map(([v,l]) => \`<option value="\${v}">\${l}</option>\`).join('');
   if (data.items && data.items.length) {
     document.getElementById('parsed-items').innerHTML = data.items.map((it, i) => \`
       <div class="item-check-row">
@@ -855,14 +859,15 @@ async function editExpense(id) {
   document.getElementById('ee-tax').value       = d.tax          || 0;
   document.getElementById('ee-total').value     = d.total        || 0;
   document.getElementById('ee-notes').value     = d.notes        || '';
-  const cats = ['supplies','equipment','cleaning','maintenance','other'];
-  const catOpts = cats.map(c => \`<option value="\${c}">\${c[0].toUpperCase()+c.slice(1)}</option>\`).join('');
+  const CAT_LABELS_E = { supplies:'Supplies / Consumables', equipment:'Equipment / Capital', cleaning:'Cleaning', maintenance:'Maintenance', other:'Other' };
+  const catOptsFor = (sel) => Object.entries(CAT_LABELS_E).map(([v,l]) => \`<option value="\${v}"\${v===sel?' selected':''}>\${l}</option>\`).join('');
   document.getElementById('ee-items').innerHTML = _editItems.length
     ? _editItems.map((it, i) => \`
       <div class="item-check-row">
         <input type="checkbox" id="ee-item-\${i}" \${it.is_rental ? 'checked' : ''} />
-        <label for="ee-item-\${i}" style="flex:1;cursor:pointer">\${it.description}\${it.quantity > 1 ? ' &times;' + it.quantity : ''}</label>
-        <span style="font-weight:600;white-space:nowrap">$\${Number(it.total).toFixed(2)}</span>
+        <label for="ee-item-\${i}" style="cursor:pointer">\${it.description}\${it.quantity > 1 ? ' &times;' + it.quantity : ''}</label>
+        <span style="font-weight:600;white-space:nowrap;text-align:right">$\${Number(it.total).toFixed(2)}</span>
+        <select id="ee-cat-\${i}">\${catOptsFor(it.category||'supplies')}</select>
       </div>\`).join('')
     : '<p style="color:#a0aec0;font-size:.83rem">No line items</p>';
   document.getElementById('edit-expense-modal').classList.add('open');
@@ -873,6 +878,7 @@ async function saveEditExpense() {
   const items = _editItems.map((it, i) => ({
     ...it,
     is_rental: document.getElementById('ee-item-'+i) ? (document.getElementById('ee-item-'+i).checked ? 1 : 0) : it.is_rental,
+    category:  document.getElementById('ee-cat-'+i)  ? document.getElementById('ee-cat-'+i).value : (it.category || 'supplies'),
   }));
   const body = {
     booking_id:   document.getElementById('ee-booking').value  || null,
@@ -1324,8 +1330,8 @@ module.exports = async function handleRequest(req, res) {
         category: d.category || 'supplies', description: d.description || '', subtotal: d.subtotal || 0,
         tax: d.tax || 0, total: d.total || 0, receipt_file: d.receipt_file || null, notes: d.notes || '',
       });
-      const insertItem = db.prepare(`INSERT INTO expense_items (expense_id,description,quantity,unit_price,total,is_rental) VALUES (?,?,?,?,?,?)`);
-      for (const it of (d.items || [])) insertItem.run(exp.lastInsertRowid, it.description, it.quantity || 1, it.unit_price || 0, it.total || 0, it.is_rental ?? 1);
+      const insertItem = db.prepare(`INSERT INTO expense_items (expense_id,description,quantity,unit_price,total,is_rental,category) VALUES (?,?,?,?,?,?,?)`);
+      for (const it of (d.items || [])) insertItem.run(exp.lastInsertRowid, it.description, it.quantity || 1, it.unit_price || 0, it.total || 0, it.is_rental ?? 1, it.category || 'supplies');
       sendJson(res, { id: exp.lastInsertRowid });
     } catch (e) { sendJson(res, { error: e.message }, 400); }
     return;
@@ -1345,8 +1351,8 @@ module.exports = async function handleRequest(req, res) {
           category=@category,description=@description,subtotal=@subtotal,tax=@tax,total=@total,notes=@notes WHERE id=@id`)
           .run({ ...d, id });
         db.prepare('DELETE FROM expense_items WHERE expense_id=?').run(id);
-        const ins = db.prepare(`INSERT INTO expense_items (expense_id,description,quantity,unit_price,total,is_rental) VALUES (?,?,?,?,?,?)`);
-        for (const it of (d.items || [])) ins.run(id, it.description, it.quantity||1, it.unit_price||0, it.total||0, it.is_rental??1);
+        const ins = db.prepare(`INSERT INTO expense_items (expense_id,description,quantity,unit_price,total,is_rental,category) VALUES (?,?,?,?,?,?,?)`);
+        for (const it of (d.items || [])) ins.run(id, it.description, it.quantity||1, it.unit_price||0, it.total||0, it.is_rental??1, it.category||'supplies');
         sendJson(res, { ok: true });
       } catch (e) { sendJson(res, { error: e.message }, 400); }
       return;
