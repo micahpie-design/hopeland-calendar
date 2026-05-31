@@ -713,25 +713,42 @@ async function deleteExpense(id) {
 
 // ─── Electricity page ─────────────────────────────────────────────────────────
 
+// ANEC default rates (energy delivery + supply, no demand/access charge)
+const ANEC_SUMMER = 0.12725; // Jun–Sep: $0.02220 + $0.10505
+const ANEC_WINTER = 0.10725; // Oct–May: $0.02220 + $0.08505
+
+function elecRateForDate(dateStr) {
+  const month = new Date((dateStr || isoToday()) + 'T00:00:00').getMonth() + 1;
+  return (month >= 6 && month <= 9)
+    ? parseFloat(getSetting('electric_rate_summer')) || 0
+    : parseFloat(getSetting('electric_rate_winter')) || 0;
+}
+
 function electricityPage() {
   const readings = db.prepare(`
     SELECT e.*, b.guest_name, b.check_in, b.check_out, b.nights
     FROM electricity e LEFT JOIN bookings b ON b.id=e.booking_id
     ORDER BY e.reading_date DESC`).all();
   const bookings = db.prepare('SELECT id, guest_name, check_in, check_out FROM bookings ORDER BY check_in DESC').all();
-  const bookingOptions = `<option value="">— Not booking-specific —</option>` +
+  const bookingOptions = `<option value="">— Between stays / Maintenance —</option>` +
     bookings.map(b => `<option value="${b.id}">${b.guest_name} (${b.check_in} to ${b.check_out})</option>`).join('');
 
-  const rate     = parseFloat(getSetting('electric_rate_per_kwh')) || 0;
-  const rateSet  = getSetting('electric_rate_updated');
-  const totalKwh = readings.reduce((a, r) => a + (r.kwh || 0), 0);
-  const totalCost = rate > 0 ? totalKwh * rate : null;
+  const summerRate = parseFloat(getSetting('electric_rate_summer')) || 0;
+  const winterRate = parseFloat(getSetting('electric_rate_winter')) || 0;
+  const ratesSet   = summerRate > 0 && winterRate > 0;
+  const rateUpdated = getSetting('electric_rate_updated');
 
-  const rateLabel = rate > 0
-    ? `$${rate.toFixed(4)}/kWh${rateSet ? ` &nbsp;<span style="font-size:.72rem;color:#a0aec0">(updated ${fmtDate(rateSet)})</span>` : ''}`
-    : `<span style="color:#e53e3e">Not set</span>`;
+  const totalKwh  = readings.reduce((a, r) => a + (r.kwh || 0), 0);
+  const totalCost = ratesSet
+    ? readings.reduce((a, r) => a + r.kwh * elecRateForDate(r.reading_date), 0)
+    : null;
+
+  const rateLabel = ratesSet
+    ? `Summer $${summerRate.toFixed(4)} &bull; Winter $${winterRate.toFixed(4)}${rateUpdated ? ` &nbsp;<span style="font-size:.72rem;color:#a0aec0">(set ${fmtDate(rateUpdated)})</span>` : ''}`
+    : `<span style="color:#e53e3e">Not set — click Set Rates</span>`;
 
   const rows = readings.length ? readings.map(r => {
+    const rate = elecRateForDate(r.reading_date);
     const cost = rate > 0 ? `<strong>${fmt$(r.kwh * rate)}</strong>` : '<span style="color:#cbd5e0">—</span>';
     return `
     <tr>
@@ -757,8 +774,8 @@ function electricityPage() {
 
 <div class="stats-grid">
   <div class="stat-card"><div class="stat-label">Total Readings</div><div class="stat-value">${readings.length}</div></div>
-  <div class="stat-card"><div class="stat-label">Total kWh Used</div><div class="stat-value">${totalKwh.toFixed(1)} kWh</div></div>
-  <div class="stat-card"><div class="stat-label">Current Rate</div><div class="stat-value" style="font-size:1.1rem">${rateLabel}</div></div>
+  <div class="stat-card"><div class="stat-label">Total kWh Tracked</div><div class="stat-value">${totalKwh.toFixed(1)} kWh</div></div>
+  <div class="stat-card" style="grid-column:span 2"><div class="stat-label">Rates (ANEC) &mdash; auto-applied by month</div><div class="stat-value" style="font-size:1rem">${rateLabel}</div></div>
   <div class="stat-card"><div class="stat-label">Est. Total Cost</div><div class="stat-value neg">${totalCost != null ? fmt$(totalCost) : '—'}</div></div>
 </div>
 
@@ -769,27 +786,29 @@ function electricityPage() {
   </table>
 </div>
 
-<!-- Set Rate Modal -->
+<!-- Set Rates Modal -->
 <div class="modal-bg" id="rate-modal">
   <div class="modal">
-    <div class="modal-title">Set Electric Rate <button onclick="document.getElementById('rate-modal').classList.remove('open')">✕</button></div>
+    <div class="modal-title">Set Electric Rates (ANEC) <button onclick="document.getElementById('rate-modal').classList.remove('open')">✕</button></div>
     <p style="font-size:.85rem;color:#4a5568;margin-bottom:16px">
-      Enter the bill total and kWh from the bill your mother-in-law shares with you — the effective rate is calculated automatically.
-      You can update this whenever the bill comes in.
+      Rates are from the ANEC Schedule A-1 (energy delivery + supply charges only — base charge excluded since you pay it regardless).
+      Update if ANEC publishes new rates.
     </p>
     <div class="form-grid" style="gap:12px">
-      <div class="field"><label>Total Bill Amount ($)</label>
-        <input id="r-bill" type="number" step="0.01" placeholder="e.g. 85.00" oninput="calcRate()" /></div>
-      <div class="field"><label>Total kWh on That Bill</label>
-        <input id="r-kwh" type="number" step="0.1" placeholder="e.g. 580" oninput="calcRate()" /></div>
+      <div class="field">
+        <label>Summer Rate — Jun through Sep ($/kWh)</label>
+        <input id="r-summer" type="number" step="0.00001" placeholder="${ANEC_SUMMER}" value="${summerRate > 0 ? summerRate : ANEC_SUMMER}" />
+        <span style="font-size:.75rem;color:#a0aec0">ANEC default: $${ANEC_SUMMER.toFixed(5)} ($0.02220 delivery + $0.10505 supply)</span>
+      </div>
+      <div class="field">
+        <label>Winter Rate — Oct through May ($/kWh)</label>
+        <input id="r-winter" type="number" step="0.00001" placeholder="${ANEC_WINTER}" value="${winterRate > 0 ? winterRate : ANEC_WINTER}" />
+        <span style="font-size:.75rem;color:#a0aec0">ANEC default: $${ANEC_WINTER.toFixed(5)} ($0.02220 delivery + $0.08505 supply)</span>
+      </div>
     </div>
-    <div id="r-calc" style="margin:10px 0 4px;font-size:.87rem;color:#4a5568;min-height:1.4em"></div>
-    <div style="text-align:center;color:#a0aec0;font-size:.8rem;padding:6px 0">— or enter rate directly —</div>
-    <div class="field"><label>Rate ($/kWh)</label>
-      <input id="r-direct" type="number" step="0.0001" placeholder="e.g. 0.1200" value="${rate > 0 ? rate : ''}" /></div>
     <div class="modal-actions">
       <button class="btn btn-secondary" onclick="document.getElementById('rate-modal').classList.remove('open')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveRate()">Save Rate</button>
+      <button class="btn btn-primary" onclick="saveRates()">Save Rates</button>
     </div>
   </div>
 </div>
@@ -824,21 +843,12 @@ function electricityPage() {
   </div>
 </div>
 `, `
-function calcRate() {
-  const bill = parseFloat(document.getElementById('r-bill').value) || 0;
-  const kwh  = parseFloat(document.getElementById('r-kwh').value)  || 0;
-  const el   = document.getElementById('r-calc');
-  if (bill > 0 && kwh > 0) {
-    const rate = (bill / kwh).toFixed(4);
-    el.innerHTML = \`Effective rate: <strong>$\${rate}/kWh</strong>\`;
-    document.getElementById('r-direct').value = rate;
-  } else { el.textContent = ''; }
-}
-
-async function saveRate() {
-  const rate = parseFloat(document.getElementById('r-direct').value);
-  if (!rate || rate <= 0) return alert('Please enter a valid rate, or fill in the bill amount and kWh above.');
-  await api('POST', '/api/settings', { key: 'electric_rate_per_kwh', value: rate });
+async function saveRates() {
+  const summer = parseFloat(document.getElementById('r-summer').value);
+  const winter = parseFloat(document.getElementById('r-winter').value);
+  if (!summer || !winter || summer <= 0 || winter <= 0) return alert('Please enter valid rates for both seasons.');
+  await api('POST', '/api/settings', { key: 'electric_rate_summer', value: summer });
+  await api('POST', '/api/settings', { key: 'electric_rate_winter', value: winter });
   await api('POST', '/api/settings', { key: 'electric_rate_updated', value: new Date().toISOString().slice(0,10) });
   location.reload();
 }
