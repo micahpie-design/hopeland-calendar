@@ -140,10 +140,31 @@ The local dashboard includes five tabs accessible from the nav bar:
 | Calendar | `/` | iCal feed viewer with conflict detection |
 | Bookings | `/bookings` | Permanent booking records (survive iCal expiry) |
 | Expenses | `/expenses` | Per-booking expense tracking with PDF auto-parse |
-| Electricity | `/electricity` | kWh readings with screenshot upload |
-| Reports | `/reports` | Summary stats + CSV export for taxes |
+| Electricity | `/electricity` | kWh readings with drag-and-drop screenshot upload |
+| Reports | `/reports` | Summary stats, folder shortcuts, CSV export for taxes |
 
-**PDF auto-parsing** supports Amazon and Walmart order receipts. After upload, each line item gets a rental/personal checkbox — only rental-flagged items count toward tax-deductible expenses.
+**Bookings tab**
+- Import bookings directly from Airbnb CSV export (completed payouts + pending reservations formats both supported). Deduplicates on confirmation code — re-importing the same CSV is safe and updates payout amounts if they've been released since last import.
+- Add, edit, and delete booking records manually.
+
+**Expenses tab**
+- Drag-and-drop PDF receipt upload with auto-parsing for **Amazon** and **Walmart** order formats.
+- Each parsed line item gets: rental/personal checkbox, and a per-item category (Supplies / Consumables, Equipment / Capital, Cleaning, Maintenance, Other). Only rental-flagged items count toward tax-deductible expenses.
+- Expandable rows in the list show item detail with Rental/Personal and category badges.
+- Manual add fallback for receipts that don't parse automatically.
+- Edit any expense or its line items after saving.
+
+**Electricity tab**
+- Drag-and-drop or click-to-select screenshot upload (Power Watchdog or similar surge suppressor display).
+- Enter kWh used per stay. Cost is auto-calculated using ANEC Schedule A-1 seasonal rates: summer $0.12725/kWh (Jun–Sep), winter $0.10725/kWh (Oct–May). Rates are configurable in the Settings section.
+- Assign reading to a booking, or leave blank for between-stay maintenance usage.
+- Edit readings after saving (screenshot is immutable once uploaded; other fields are editable).
+
+**Reports tab**
+- Six summary stat cards: Total Payout, Rental Expenses, Net Profit, Total kWh, General Expenses, Bookings.
+- Per-booking breakdown table with payout, rental expenses, kWh, and net per stay.
+- **"View Receipt PDFs"** and **"View Electricity Screenshots"** buttons open Windows Explorer directly to the uploads folders.
+- **Export CSV for Taxes** downloads a multi-section file (bookings, itemized rental expenses, electricity readings, summary row) suitable for Schedule E filing.
 
 ---
 
@@ -151,8 +172,19 @@ The local dashboard includes five tabs accessible from the nav bar:
 
 - **Node.js** (stdlib http/https + npm packages below)
 - **better-sqlite3** — SQLite database for expense tracker data
-- **multer** — multipart file upload handling
-- **pdf-parse** — PDF text extraction for receipt parsing
+- **multer** — multipart file upload handling (disk storage for receipts/electricity, memory storage for CSV import)
+- **pdf-parse v1.1.1** — PDF text extraction for receipt parsing (pinned — newer versions changed the export API)
 - **FullCalendar v6** (loaded from CDN in the browser)
 - **GitHub Actions** (free for public repos, unlimited minutes)
 - **GitHub Pages** (free static file hosting)
+
+### Data storage & backup
+
+| Data | Location | Backed up? |
+|------|----------|-----------|
+| Code | `d:\Dropbox\...\RV_iCAL_Syncs\` + GitHub | Dropbox + GitHub history |
+| Database (`hopeland.db`) | `data/` — NOT in git | Dropbox auto-sync + version history |
+| PDF receipts | `uploads/receipts/` — NOT in git | Dropbox auto-sync |
+| Electricity screenshots | `uploads/electricity/` — NOT in git | Dropbox auto-sync |
+
+`data/` and `uploads/` are intentionally excluded from git because the repo is public. Dropbox handles backup automatically since the whole project lives inside the Dropbox folder. For accounting safety, export the CSV from Reports at the end of each month.
