@@ -68,4 +68,7 @@ db.exec(`
   );
 `);
 
+db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_confirmation
+  ON bookings(confirmation) WHERE confirmation IS NOT NULL AND confirmation != '';`);
+
 module.exports = db;

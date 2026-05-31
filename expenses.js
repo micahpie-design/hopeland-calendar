@@ -23,6 +23,7 @@ function makeStorage(subdir) {
 }
 const receiptUpload     = multer({ storage: makeStorage('receipts'),     limits: { fileSize: 15 * 1024 * 1024 } });
 const electricityUpload = multer({ storage: makeStorage('electricity'),  limits: { fileSize: 15 * 1024 * 1024 } });
+const csvUpload         = multer({ storage: multer.memoryStorage(),      limits: { fileSize: 5  * 1024 * 1024 } });
 
 function runMw(req, res, mw) {
   return new Promise((resolve, reject) => mw(req, res, err => err ? reject(err) : resolve()));
@@ -115,6 +116,75 @@ async function parsePDF(filePath) {
   if (text.toLowerCase().includes('amazon.com') || text.includes('Grand Total:')) return parseAmazon(text);
   // Generic fallback — return raw text for manual entry
   return { vendor: 'Unknown', orderNumber: '', date: '', items: [], subtotal: 0, tax: 0, total: 0, rawText: text.slice(0, 2000) };
+}
+
+// ─── Airbnb CSV import ────────────────────────────────────────────────────────
+
+function parseCSVRow(line) {
+  const fields = [];
+  let field = '', inQuotes = false;
+  for (const ch of line) {
+    if (ch === '"') inQuotes = !inQuotes;
+    else if (ch === ',' && !inQuotes) { fields.push(field); field = ''; }
+    else field += ch;
+  }
+  fields.push(field);
+  return fields;
+}
+
+function parseAirbnbDate(s) {
+  if (!s) return null;
+  const m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  return m ? `${m[3]}-${m[1].padStart(2, '0')}-${m[2].padStart(2, '0')}` : null;
+}
+
+function importAirbnbCSV(buffer) {
+  const lines = buffer.toString('utf8').replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    .split('\n').filter(l => l.trim());
+  if (lines.length < 2) return { imported: 0, skipped: 0 };
+
+  const headers = parseCSVRow(lines[0]).map(h => h.trim());
+  const col     = name => headers.indexOf(name);
+
+  const stmt = db.prepare(`INSERT OR IGNORE INTO bookings
+    (platform,guest_name,confirmation,check_in,check_out,nights,rate_per_night,cleaning_fee,service_fee,gross_revenue,payout,notes)
+    VALUES (@platform,@guest_name,@confirmation,@check_in,@check_out,@nights,@rate_per_night,@cleaning_fee,@service_fee,@gross_revenue,@payout,@notes)`);
+
+  let imported = 0, skipped = 0;
+  for (const line of lines.slice(1)) {
+    const v   = parseCSVRow(line).map(f => f.trim());
+    const get = name => v[col(name)] || '';
+    if (get('Type') !== 'Reservation') continue;
+    const confirmation = get('Confirmation code');
+    if (!confirmation) continue;
+
+    const nights       = parseInt(get('Nights'))         || 0;
+    const grossRevenue = parseFloat(get('Gross earnings')) || 0;
+    const cleaningFee  = parseFloat(get('Cleaning fee'))  || 0;
+    const serviceFee   = parseFloat(get('Service fee'))   || 0;
+    const fastPayFee   = parseFloat(get('Fast pay fee'))  || 0;
+    const payout       = fastPayFee > 0
+      ? +(grossRevenue - serviceFee - fastPayFee).toFixed(2) : 0;
+    const ratePerNight = nights > 0
+      ? +((grossRevenue - cleaningFee) / nights).toFixed(2) : 0;
+
+    const r = stmt.run({
+      platform:      'airbnb',
+      guest_name:    get('Guest'),
+      confirmation,
+      check_in:      parseAirbnbDate(get('Start date')),
+      check_out:     parseAirbnbDate(get('End date')),
+      nights,
+      rate_per_night: ratePerNight,
+      cleaning_fee:  cleaningFee,
+      service_fee:   serviceFee,
+      gross_revenue: grossRevenue,
+      payout,
+      notes: get('Booking date') ? `Booked: ${get('Booking date')}` : '',
+    });
+    if (r.changes) imported++; else skipped++;
+  }
+  return { imported, skipped };
 }
 
 // ─── Shared styles & nav ──────────────────────────────────────────────────────
@@ -280,7 +350,11 @@ function bookingsPage() {
 <div id="msg" style="display:none" class="notice"></div>
 <div class="page-title">
   Bookings
-  <button class="btn btn-primary" onclick="document.getElementById('add-modal').classList.add('open')">+ Add Booking</button>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-secondary" onclick="document.getElementById('csv-input').click()">&#8679; Import Airbnb CSV</button>
+    <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="importCSV(this.files[0])">
+    <button class="btn btn-primary" onclick="document.getElementById('add-modal').classList.add('open')">+ Add Booking</button>
+  </div>
 </div>
 
 <div class="stats-grid">
@@ -363,6 +437,25 @@ async function deleteBooking(id) {
   if (!confirm('Delete this booking? Associated expenses and electricity records will remain.')) return;
   const r = await api('DELETE', '/api/bookings/' + id);
   if (r.ok) location.reload(); else showMsg(r.error || 'Error.', 'err');
+}
+
+async function importCSV(file) {
+  if (!file) return;
+  const btn = document.querySelector('[onclick*="csv-input"]');
+  if (btn) btn.textContent = 'Importing…';
+  const fd = new FormData();
+  fd.append('csv', file);
+  document.getElementById('csv-input').value = '';
+  try {
+    const r    = await fetch('/api/import-csv', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.error) { showMsg('Import error: ' + data.error, 'err'); }
+    else {
+      showMsg('Imported ' + data.imported + ' booking(s) — ' + data.skipped + ' already existed.', 'ok');
+      if (data.imported > 0) setTimeout(() => location.reload(), 1500);
+    }
+  } catch (e) { showMsg('Import failed: ' + e.message, 'err'); }
+  if (btn) btn.textContent = '⬆ Import Airbnb CSV';
 }
 `);
 }
@@ -845,6 +938,17 @@ module.exports = async function handleRequest(req, res) {
   if (bDel && method === 'DELETE') {
     db.prepare('DELETE FROM bookings WHERE id=?').run(parseInt(bDel[1]));
     sendJson(res, { ok: true }); return;
+  }
+
+  // ── Import Airbnb CSV ──────────────────────────────────────────────────────
+  if (p === '/api/import-csv' && method === 'POST') {
+    try {
+      await runMw(req, res, csvUpload.single('csv'));
+      if (!req.file) { sendJson(res, { error: 'No file received' }, 400); return; }
+      const result = importAirbnbCSV(req.file.buffer);
+      sendJson(res, result);
+    } catch (e) { sendJson(res, { error: e.message }, 500); }
+    return;
   }
 
   // ── Parse PDF ──────────────────────────────────────────────────────────────

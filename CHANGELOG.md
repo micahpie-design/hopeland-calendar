@@ -4,6 +4,15 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-31] — Add Airbnb CSV import to bookings
+
+### Changed
+- `expenses.js` — added `importAirbnbCSV()` parser (handles both the completed-payouts and pending-reservations CSV formats Airbnb exports). Filters `Type=Reservation` rows, maps guest name, dates, nights, gross earnings, cleaning fee, service fee, and calculates payout as `gross - service_fee - fast_pay_fee`. Deduplicates on `Confirmation code` — re-importing the same CSV skips existing records silently. Added `POST /api/import-csv` route (multer memory storage — CSV is parsed and discarded, not saved to disk). Added "Import Airbnb CSV" button to Bookings page header.
+- `db.js` — added `CREATE UNIQUE INDEX IF NOT EXISTS` on `bookings.confirmation` to enable `INSERT OR IGNORE` deduplication.
+- `calendar_dashboard.js` — added `/api/import-csv` to expense route delegation list.
+
+---
+
 ## [2026-05-31] — Add expense tracker (bookings, expenses, electricity, reports)
 
 ### Added
