@@ -4,6 +4,16 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-31] — Folder shortcuts on Reports page; temp file cleanup
+
+### Added
+- `expenses.js` — "View Receipt PDFs" and "View Electricity Screenshots" buttons on Reports page header. Clicking either opens Windows Explorer directly to `uploads/receipts/` or `uploads/electricity/`. Server-side `POST /api/open-folder/:name` route uses `child_process.exec('explorer.exe ...')`. Route registered in `calendar_dashboard.js` EXPENSE_APIS list.
+
+### Fixed
+- Deleted 23 VS Code editor temp files (`*.tmp.*`) from project root. Already excluded from git via `.gitignore` but cluttered the working directory.
+
+---
+
 ## [2026-05-31] — Per-item category in expenses
 
 ### Changed

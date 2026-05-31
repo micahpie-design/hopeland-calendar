@@ -3,6 +3,7 @@
 
 const fs       = require('fs');
 const path     = require('path');
+const { exec } = require('child_process');
 const multer   = require('multer');
 const pdfParse = require('pdf-parse');
 const db       = require('./db');
@@ -1166,7 +1167,11 @@ function reportsPage() {
   return pageShell('/reports', 'Reports', `
 <div class="page-title">
   Reports &amp; Export
-  <a href="/export/csv" class="btn btn-success">⬇ Export CSV for Taxes</a>
+  <div style="display:flex;gap:8px;flex-wrap:wrap">
+    <button class="btn btn-secondary" onclick="openFolder('receipts')">📄 View Receipt PDFs</button>
+    <button class="btn btn-secondary" onclick="openFolder('electricity')">📷 View Electricity Screenshots</button>
+    <a href="/export/csv" class="btn btn-success">⬇ Export CSV for Taxes</a>
+  </div>
 </div>
 
 <div class="stats-grid">
@@ -1198,6 +1203,14 @@ function reportsPage() {
 
 ${generalExp > 0 ? `<div class="card"><div class="card-title">General Expenses (not booking-specific)</div>
   <p style="font-size:.85rem;color:#718096">Total: <strong>${fmt$(generalExp)}</strong> in rental expenses not linked to a specific booking (equipment, supplies, etc.)</p></div>` : ''}
+
+<script>
+async function openFolder(name) {
+  const r = await fetch('/api/open-folder/' + name, { method: 'POST' });
+  const d = await r.json();
+  if (!d.ok) alert('Could not open folder: ' + (d.error || 'unknown error'));
+}
+</script>
 `);
 }
 
@@ -1312,6 +1325,18 @@ module.exports = async function handleRequest(req, res) {
       setSetting(d.key, d.value);
       sendJson(res, { ok: true });
     } catch (e) { sendJson(res, { error: e.message }, 400); }
+    return;
+  }
+
+  // ── Open folder in Explorer ────────────────────────────────────────────────
+  const folderMatch = p.match(/^\/api\/open-folder\/(receipts|electricity)$/);
+  if (folderMatch && method === 'POST') {
+    const folderPath = path.join(UPLOAD_DIR, folderMatch[1]);
+    if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
+    exec(`explorer.exe "${folderPath}"`, err => {
+      if (err) sendJson(res, { ok: false, error: err.message }, 500);
+      else sendJson(res, { ok: true });
+    });
     return;
   }
 
