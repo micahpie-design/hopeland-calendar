@@ -3,7 +3,7 @@
 
 const fs       = require('fs');
 const path     = require('path');
-const { exec } = require('child_process');
+const { spawn } = require('child_process');
 const multer   = require('multer');
 const pdfParse = require('pdf-parse');
 const db       = require('./db');
@@ -1333,10 +1333,8 @@ module.exports = async function handleRequest(req, res) {
   if (folderMatch && method === 'POST') {
     const folderPath = path.join(UPLOAD_DIR, folderMatch[1]);
     if (!fs.existsSync(folderPath)) fs.mkdirSync(folderPath, { recursive: true });
-    exec(`explorer.exe "${folderPath}"`, err => {
-      if (err) sendJson(res, { ok: false, error: err.message }, 500);
-      else sendJson(res, { ok: true });
-    });
+    spawn('explorer.exe', [folderPath], { detached: true, stdio: 'ignore' }).unref();
+    sendJson(res, { ok: true });
     return;
   }
 
