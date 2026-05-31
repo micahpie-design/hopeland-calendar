@@ -1036,10 +1036,15 @@ function electricityPage() {
       <div class="field"><label>Energy Used (kWh)</label><input id="e-kwh" type="number" step="0.1" placeholder="e.g. 70.0" /></div>
     </div>
     <div class="field" style="margin-bottom:14px"><label>Upload Screenshot (optional)</label>
-      <div class="upload-zone" onclick="document.getElementById('elec-file').click()" style="padding:16px">
+      <div class="upload-zone" id="elec-drop-zone"
+           onclick="document.getElementById('elec-file').click()"
+           ondragover="event.preventDefault();this.classList.add('over')"
+           ondragleave="this.classList.remove('over')"
+           ondrop="handleElecDrop(event)"
+           style="padding:16px">
         <input type="file" id="elec-file" accept="image/*,.jpg,.jpeg,.png" onchange="previewElec(this)" />
         <div class="icon" style="font-size:1.4rem">📷</div>
-        <p>Click to upload Power Watchdog screenshot</p>
+        <p id="elec-drop-label">Click or drag &amp; drop a screenshot here</p>
       </div>
       <img id="elec-preview" class="img-preview" style="display:none;max-height:200px" />
     </div>
@@ -1065,9 +1070,22 @@ async function saveRates() {
   location.reload();
 }
 
+function handleElecDrop(e) {
+  e.preventDefault();
+  document.getElementById('elec-drop-zone').classList.remove('over');
+  const file = e.dataTransfer.files[0];
+  if (!file) return;
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  const input = document.getElementById('elec-file');
+  input.files = dt.files;
+  previewElec(input);
+}
+
 function previewElec(input) {
   const file = input.files[0];
   if (!file) return;
+  document.getElementById('elec-drop-label').textContent = file.name;
   const reader = new FileReader();
   reader.onload = e => { const img = document.getElementById('elec-preview'); img.src = e.target.result; img.style.display = 'block'; };
   reader.readAsDataURL(file);
