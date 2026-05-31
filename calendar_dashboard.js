@@ -3,8 +3,9 @@
 // Run:  node calendar_dashboard.js
 // Open: http://localhost:3031/
 
-const http  = require('http');
-const https = require('https');
+const http     = require('http');
+const https    = require('https');
+const expenses = require('./expenses');
 
 const PORT = 3031;
 const GH_OWNER = 'micahpie-design';
@@ -249,6 +250,7 @@ const HTML = `<!DOCTYPE html>
 
   footer { text-align: center; padding: 14px; font-size: 0.75rem; color: #a0aec0; background: white; border-top: 1px solid #e2e8f0; }
 </style>
+<style>${expenses.SHARED_CSS}</style>
 </head>
 <body>
 
@@ -262,6 +264,8 @@ const HTML = `<!DOCTYPE html>
     <span id="status">Loading&hellip;</span>
   </div>
 </header>
+
+${expenses.navHtml('/')}
 
 <div id="conflict-banner">
   <strong>&#9888; Booking Conflicts Detected</strong>
@@ -438,8 +442,18 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // ─── HTTP server ──────────────────────────────────────────────────────────────
 
+const EXPENSE_PAGES = ['/bookings', '/expenses', '/electricity', '/reports', '/export', '/uploads'];
+const EXPENSE_APIS  = ['/api/bookings', '/api/expenses', '/api/electricity', '/api/parse-pdf'];
+
 const server = http.createServer(async (req, res) => {
   const path = req.url.split('?')[0];
+
+  if (
+    EXPENSE_PAGES.some(p => path === p || path.startsWith(p + '/')) ||
+    EXPENSE_APIS.some(p  => path === p || path.startsWith(p + '/'))
+  ) {
+    return expenses(req, res);
+  }
 
   if (path === '/' || path === '/index.html') {
     res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });

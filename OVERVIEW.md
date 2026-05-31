@@ -25,13 +25,22 @@ Prevents double bookings across three short-term RV rental platforms by:
 
 ```
 RV_iCAL_Syncs/
-├── calendar_dashboard.js      Local web dashboard server (port 3031)
+├── calendar_dashboard.js      Local web dashboard server (port 3031) — calendar + nav
+├── expenses.js                Expense tracker module (bookings, expenses, electricity, reports)
+├── db.js                      SQLite database setup (better-sqlite3)
 ├── Start Dashboard.bat        Double-click launcher for the local dashboard
+├── run_silent.vbs             Silent launcher (no console window) used by Task Scheduler
 ├── generate_ical.js           GitHub Actions script — merges 3 feeds into merged.ics
 ├── merged.ics                 Auto-generated merged calendar (committed by GitHub Actions)
 ├── index.html                 GitHub Pages landing page showing the merged feed URL
+├── package.json               Node.js dependencies (better-sqlite3, multer, pdf-parse)
 ├── OVERVIEW.md                This file
 ├── CHANGELOG.md               History of all changes
+├── data/                      SQLite DB — NOT committed (contains financial data)
+│   └── hopeland.db
+├── uploads/                   Uploaded files — NOT committed (personal/financial data)
+│   ├── receipts/              PDF expense receipts
+│   └── electricity/           Electricity screenshot images
 └── .github/
     └── workflows/
         └── sync.yml           GitHub Actions workflow — runs every 30 minutes
@@ -122,9 +131,28 @@ For the **local dashboard**, update the URL directly in `calendar_dashboard.js` 
 
 ---
 
+### Expense tracker tabs
+
+The local dashboard includes five tabs accessible from the nav bar:
+
+| Tab | URL | Purpose |
+|-----|-----|---------|
+| Calendar | `/` | iCal feed viewer with conflict detection |
+| Bookings | `/bookings` | Permanent booking records (survive iCal expiry) |
+| Expenses | `/expenses` | Per-booking expense tracking with PDF auto-parse |
+| Electricity | `/electricity` | kWh readings with screenshot upload |
+| Reports | `/reports` | Summary stats + CSV export for taxes |
+
+**PDF auto-parsing** supports Amazon and Walmart order receipts. After upload, each line item gets a rental/personal checkbox — only rental-flagged items count toward tax-deductible expenses.
+
+---
+
 ### Tech stack
 
-- **Node.js** (stdlib only — no npm packages required)
+- **Node.js** (stdlib http/https + npm packages below)
+- **better-sqlite3** — SQLite database for expense tracker data
+- **multer** — multipart file upload handling
+- **pdf-parse** — PDF text extraction for receipt parsing
 - **FullCalendar v6** (loaded from CDN in the browser)
 - **GitHub Actions** (free for public repos, unlimited minutes)
 - **GitHub Pages** (free static file hosting)

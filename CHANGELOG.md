@@ -4,6 +4,24 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-31] — Add expense tracker (bookings, expenses, electricity, reports)
+
+### Added
+- `db.js` — SQLite database (via better-sqlite3) with four tables: `bookings`, `expenses`, `expense_items`, `electricity`. Stored in `data/hopeland.db` (excluded from git).
+- `expenses.js` — Full expense tracker module. Exports `handleRequest`, `navHtml`, and `SHARED_CSS`. Handles all expense-tracker routes and renders server-side HTML pages.
+  - **Bookings tab** (`/bookings`): Add and delete booking records (guest name, platform, dates, payout). Stats grid shows totals. Each row links to per-booking expense and kWh totals. Add Booking modal auto-calculates nights.
+  - **Expenses tab** (`/expenses`): Drag-and-drop PDF receipt upload with auto-parse for Amazon and Walmart order formats. Parsed items shown with per-item rental/personal checkbox and category selector. Manual add fallback for other vendors. Expandable rows show item detail with rental/personal badges.
+  - **Electricity tab** (`/electricity`): Upload screenshot + manual kWh entry. Assign reading to a booking. Image preview in modal.
+  - **Reports tab** (`/reports`): Six summary stat cards (total payout, rental expenses, electricity cost, net profit, bookings, nights). Per-booking breakdown table. CSV export downloads multi-section file (bookings, rental-only expense items, electricity readings, summary row).
+  - PDF parsers: Walmart (`Item Qty N $price` format) and Amazon (standalone qty → multi-line description → Sold by → price) with Grand Total / Item Subtotal / Estimated tax extraction.
+- `uploads/receipts/` and `uploads/electricity/` — Created at startup for file storage (excluded from git).
+
+### Changed
+- `calendar_dashboard.js` — Added `require('./expenses')` module. Calendar page now includes shared nav bar (Calendar · Bookings · Expenses · Electricity · Reports). HTTP handler delegates all expense/upload routes to the expenses module before handling calendar routes.
+- `package.json` — Added dependencies: `better-sqlite3`, `multer`, `pdf-parse`.
+
+---
+
 ## [2026-05-23] — Add GitHub Actions run history to sync log
 
 ### Changed
