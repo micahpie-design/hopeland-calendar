@@ -71,19 +71,40 @@ function isoToday() { return new Date().toISOString().slice(0, 10); }
 function parseWalmart(text) {
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
   const result = { vendor: 'Walmart', orderNumber: '', date: '', items: [], subtotal: 0, tax: 0, total: 0 };
-  for (const line of lines) {
-    const dm = line.match(/^([A-Z][a-z]+ \d+, \d{4}) order/);
-    if (dm) result.date = dm[1];
-    const om = line.match(/Order#\s*(\S+)/);
-    if (om && !result.orderNumber) result.orderNumber = om[1];
-    const im = line.match(/^(.+?)\s+Qty\s+(\d+)\s+\$([0-9.]+)$/);
+
+  const dm = text.match(/([A-Z][a-z]+ \d+, \d{4}) order/);
+  if (dm) result.date = dm[1];
+  const om = text.match(/Order#\s*(\S+)/);
+  if (om) result.orderNumber = om[1];
+
+  for (let i = 0; i < lines.length; i++) {
+    // Item line: "Description textQty N" (no space before Qty), price "$X.XX" on next line
+    const im = lines[i].match(/^(.+?)Qty\s+(\d+)$/);
     if (im) {
-      const qty = parseInt(im[2]), price = parseFloat(im[3]);
-      result.items.push({ description: im[1].trim(), quantity: qty, unit_price: price, total: +(price * qty).toFixed(2), is_rental: 1 });
+      const desc = im[1].trim();
+      const qty  = parseInt(im[2]);
+      let price  = 0;
+      if (i + 1 < lines.length) {
+        const pm = lines[i + 1].match(/^\$([0-9.]+)$/);
+        if (pm) { price = parseFloat(pm[1]); i++; }
+      }
+      result.items.push({ description: desc, quantity: qty, unit_price: price, total: +(price * qty).toFixed(2), is_rental: 1 });
+      continue;
     }
-    if (/^Subtotal\s+\$/.test(line)) result.subtotal = parseFloat(line.match(/\$([0-9.]+)/)[1]);
-    if (/^Tax\s+\$/.test(line))      result.tax      = parseFloat(line.match(/\$([0-9.]+)/)[1]);
-    if (/^Total\s+\$/.test(line))    result.total    = parseFloat(line.match(/\$([0-9.]+)/)[1]);
+    // Subtotal — may or may not have space before $
+    const stm = lines[i].match(/^Subtotal[\s$]*([0-9.]+)$/);
+    if (stm) { result.subtotal = parseFloat(stm[1]); continue; }
+    // Tax — amount may be on same line or next line
+    if (/^Tax$/.test(lines[i]) && i + 1 < lines.length) {
+      const tm = lines[i + 1].match(/^\$?([0-9.]+)$/);
+      if (tm) { result.tax = parseFloat(tm[1]); i++; }
+      continue;
+    }
+    const taxm = lines[i].match(/^Tax[\s$]+([0-9.]+)$/);
+    if (taxm) { result.tax = parseFloat(taxm[1]); continue; }
+    // Total (must not match Subtotal — anchored with ^Total)
+    const totm = lines[i].match(/^Total[\s$]*([0-9.]+)$/);
+    if (totm) result.total = parseFloat(totm[1]);
   }
   return result;
 }

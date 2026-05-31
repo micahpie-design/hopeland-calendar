@@ -4,6 +4,13 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-05-31] — Fix Walmart PDF parser
+
+### Changed
+- `expenses.js` — rewrote `parseWalmart()` to match actual Walmart invoice PDF format: item lines are `Description textQty N` (no space before Qty) with the price `$X.XX` on the following line; Subtotal/Total are `Subtotal$X.XX` with no space; Tax appears as a standalone label with amount on the next line. Previous parser expected a single-line `Description Qty N $price` format that Walmart does not produce. Verified against 7 real Walmart order PDFs.
+
+---
+
 ## [2026-05-31] — Add Airbnb CSV import to bookings
 
 ### Changed
