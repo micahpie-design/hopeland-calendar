@@ -68,6 +68,8 @@ db.exec(`
   );
 `);
 
+db.exec(`CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);`);
+
 db.exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_bookings_confirmation
   ON bookings(confirmation) WHERE confirmation IS NOT NULL AND confirmation != '';`);
 

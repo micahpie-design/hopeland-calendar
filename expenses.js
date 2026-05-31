@@ -50,6 +50,14 @@ function sendHtml(res, html) {
   res.end(html);
 }
 
+function getSetting(key, def = null) {
+  const r = db.prepare('SELECT value FROM settings WHERE key=?').get(key);
+  return r ? r.value : def;
+}
+function setSetting(key, value) {
+  db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)').run(key, String(value));
+}
+
 function fmt$(n) { return n == null ? '—' : '$' + Number(n).toFixed(2); }
 function fmtDate(d) {
   if (!d) return '—';
@@ -713,42 +721,84 @@ function electricityPage() {
   const bookings = db.prepare('SELECT id, guest_name, check_in, check_out FROM bookings ORDER BY check_in DESC').all();
   const bookingOptions = `<option value="">— Not booking-specific —</option>` +
     bookings.map(b => `<option value="${b.id}">${b.guest_name} (${b.check_in} to ${b.check_out})</option>`).join('');
-  const totalKwh = readings.reduce((a, r) => a + (r.kwh || 0), 0);
 
-  const rows = readings.length ? readings.map(r => `
+  const rate     = parseFloat(getSetting('electric_rate_per_kwh')) || 0;
+  const rateSet  = getSetting('electric_rate_updated');
+  const totalKwh = readings.reduce((a, r) => a + (r.kwh || 0), 0);
+  const totalCost = rate > 0 ? totalKwh * rate : null;
+
+  const rateLabel = rate > 0
+    ? `$${rate.toFixed(4)}/kWh${rateSet ? ` &nbsp;<span style="font-size:.72rem;color:#a0aec0">(updated ${fmtDate(rateSet)})</span>` : ''}`
+    : `<span style="color:#e53e3e">Not set</span>`;
+
+  const rows = readings.length ? readings.map(r => {
+    const cost = rate > 0 ? `<strong>${fmt$(r.kwh * rate)}</strong>` : '<span style="color:#cbd5e0">—</span>';
+    return `
     <tr>
       <td>${fmtDate(r.reading_date)}</td>
-      <td>${r.guest_name ? `<strong>${r.guest_name}</strong><br><span style="font-size:.72rem;color:#a0aec0">${r.check_in} – ${r.check_out}</span>` : '—'}</td>
+      <td>${r.guest_name ? `<strong>${r.guest_name}</strong><br><span style="font-size:.72rem;color:#a0aec0">${r.check_in} – ${r.check_out}</span>` : '<span style="color:#a0aec0">Between stays</span>'}</td>
       <td class="num"><strong>${r.kwh}</strong> kWh</td>
+      <td class="num">${cost}</td>
       <td>${r.notes || '—'}</td>
       <td>${r.screenshot_file ? `<a href="/uploads/electricity/${r.screenshot_file}" target="_blank" style="color:#4299e1;font-size:.75rem">📷 View</a>` : '—'}</td>
       <td><button class="btn btn-danger btn-sm" onclick="deleteReading(${r.id})">✕</button></td>
-    </tr>`).join('') : `<tr><td colspan="6"><div class="empty-state"><div class="icon">⚡</div>No electricity readings yet.</div></td></tr>`;
+    </tr>`;
+  }).join('') : `<tr><td colspan="7"><div class="empty-state"><div class="icon">⚡</div>No electricity readings yet.</div></td></tr>`;
 
   return pageShell('/electricity', 'Electricity', `
 <div id="msg" style="display:none" class="notice"></div>
 <div class="page-title">
   Electricity Usage
-  <button class="btn btn-primary" onclick="document.getElementById('elec-modal').classList.add('open')">+ Add Reading</button>
+  <div style="display:flex;gap:8px">
+    <button class="btn btn-secondary" onclick="document.getElementById('rate-modal').classList.add('open')">⚙ Set Rate</button>
+    <button class="btn btn-primary" onclick="document.getElementById('elec-modal').classList.add('open')">+ Add Reading</button>
+  </div>
 </div>
 
 <div class="stats-grid">
   <div class="stat-card"><div class="stat-label">Total Readings</div><div class="stat-value">${readings.length}</div></div>
   <div class="stat-card"><div class="stat-label">Total kWh Used</div><div class="stat-value">${totalKwh.toFixed(1)} kWh</div></div>
+  <div class="stat-card"><div class="stat-label">Current Rate</div><div class="stat-value" style="font-size:1.1rem">${rateLabel}</div></div>
+  <div class="stat-card"><div class="stat-label">Est. Total Cost</div><div class="stat-value neg">${totalCost != null ? fmt$(totalCost) : '—'}</div></div>
 </div>
 
 <div class="card">
   <table>
-    <thead><tr><th>Date</th><th>Guest / Booking</th><th class="num">Usage</th><th>Notes</th><th>Screenshot</th><th></th></tr></thead>
+    <thead><tr><th>Date</th><th>Guest / Booking</th><th class="num">Usage</th><th class="num">Est. Cost</th><th>Notes</th><th>Screenshot</th><th></th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
+</div>
+
+<!-- Set Rate Modal -->
+<div class="modal-bg" id="rate-modal">
+  <div class="modal">
+    <div class="modal-title">Set Electric Rate <button onclick="document.getElementById('rate-modal').classList.remove('open')">✕</button></div>
+    <p style="font-size:.85rem;color:#4a5568;margin-bottom:16px">
+      Enter the bill total and kWh from the bill your mother-in-law shares with you — the effective rate is calculated automatically.
+      You can update this whenever the bill comes in.
+    </p>
+    <div class="form-grid" style="gap:12px">
+      <div class="field"><label>Total Bill Amount ($)</label>
+        <input id="r-bill" type="number" step="0.01" placeholder="e.g. 85.00" oninput="calcRate()" /></div>
+      <div class="field"><label>Total kWh on That Bill</label>
+        <input id="r-kwh" type="number" step="0.1" placeholder="e.g. 580" oninput="calcRate()" /></div>
+    </div>
+    <div id="r-calc" style="margin:10px 0 4px;font-size:.87rem;color:#4a5568;min-height:1.4em"></div>
+    <div style="text-align:center;color:#a0aec0;font-size:.8rem;padding:6px 0">— or enter rate directly —</div>
+    <div class="field"><label>Rate ($/kWh)</label>
+      <input id="r-direct" type="number" step="0.0001" placeholder="e.g. 0.1200" value="${rate > 0 ? rate : ''}" /></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="document.getElementById('rate-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-primary" onclick="saveRate()">Save Rate</button>
+    </div>
+  </div>
 </div>
 
 <!-- Add Reading Modal -->
 <div class="modal-bg" id="elec-modal">
   <div class="modal">
     <div class="modal-title">Add Electricity Reading <button onclick="document.getElementById('elec-modal').classList.remove('open')">✕</button></div>
-    <div class="field" style="margin-bottom:14px"><label>Assign to Booking</label>
+    <div class="field" style="margin-bottom:14px"><label>Assign to Booking (or leave blank for between-stay usage)</label>
       <select id="e-booking">${bookingOptions}</select></div>
     <div class="form-grid" style="gap:12px;margin-bottom:14px">
       <div class="field"><label>Reading Date</label><input id="e-date" type="date" value="${isoToday()}" /></div>
@@ -774,6 +824,25 @@ function electricityPage() {
   </div>
 </div>
 `, `
+function calcRate() {
+  const bill = parseFloat(document.getElementById('r-bill').value) || 0;
+  const kwh  = parseFloat(document.getElementById('r-kwh').value)  || 0;
+  const el   = document.getElementById('r-calc');
+  if (bill > 0 && kwh > 0) {
+    const rate = (bill / kwh).toFixed(4);
+    el.innerHTML = \`Effective rate: <strong>$\${rate}/kWh</strong>\`;
+    document.getElementById('r-direct').value = rate;
+  } else { el.textContent = ''; }
+}
+
+async function saveRate() {
+  const rate = parseFloat(document.getElementById('r-direct').value);
+  if (!rate || rate <= 0) return alert('Please enter a valid rate, or fill in the bill amount and kWh above.');
+  await api('POST', '/api/settings', { key: 'electric_rate_per_kwh', value: rate });
+  await api('POST', '/api/settings', { key: 'electric_rate_updated', value: new Date().toISOString().slice(0,10) });
+  location.reload();
+}
+
 function previewElec(input) {
   const file = input.files[0];
   if (!file) return;
@@ -955,6 +1024,17 @@ module.exports = async function handleRequest(req, res) {
   if (bDel && method === 'DELETE') {
     db.prepare('DELETE FROM bookings WHERE id=?').run(parseInt(bDel[1]));
     sendJson(res, { ok: true }); return;
+  }
+
+  // ── Settings ───────────────────────────────────────────────────────────────
+  if (p === '/api/settings' && method === 'POST') {
+    try {
+      const d = JSON.parse(await readBody(req));
+      if (!d.key) { sendJson(res, { error: 'Missing key' }, 400); return; }
+      setSetting(d.key, d.value);
+      sendJson(res, { ok: true });
+    } catch (e) { sendJson(res, { error: e.message }, 400); }
+    return;
   }
 
   // ── Import Airbnb CSV ──────────────────────────────────────────────────────

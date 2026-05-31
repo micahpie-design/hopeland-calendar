@@ -443,7 +443,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ─── HTTP server ──────────────────────────────────────────────────────────────
 
 const EXPENSE_PAGES = ['/bookings', '/expenses', '/electricity', '/reports', '/export', '/uploads'];
-const EXPENSE_APIS  = ['/api/bookings', '/api/expenses', '/api/electricity', '/api/parse-pdf', '/api/import-csv'];
+const EXPENSE_APIS  = ['/api/bookings', '/api/expenses', '/api/electricity', '/api/parse-pdf', '/api/import-csv', '/api/settings'];
 
 const server = http.createServer(async (req, res) => {
   const path = req.url.split('?')[0];
