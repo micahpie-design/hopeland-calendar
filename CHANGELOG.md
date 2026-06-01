@@ -4,6 +4,13 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-06-01] — Potential YTD Gross Profit tile on Bookings page
+
+### Added
+- `expenses.js` — New stat card on the Bookings page showing Potential YTD Gross Profit for the current calendar year. Filters bookings by `check_in` year and sums `gross_revenue` (the platform's listed gross before fees). "Potential" because it includes upcoming bookings not yet completed. Tile has a blue left border to distinguish it from the all-time totals.
+
+---
+
 ## [2026-05-31] — Folder shortcuts on Reports page; temp file cleanup
 
 ### Added

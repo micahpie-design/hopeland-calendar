@@ -146,6 +146,7 @@ The local dashboard includes five tabs accessible from the nav bar:
 **Bookings tab**
 - Import bookings directly from Airbnb CSV export (completed payouts + pending reservations formats both supported). Deduplicates on confirmation code — re-importing the same CSV is safe and updates payout amounts if they've been released since last import.
 - Add, edit, and delete booking records manually.
+- Five stat cards: Total Bookings, Total Payout, Rental Expenses, Net Profit, and **Potential YTD Gross Profit** — sums gross revenue for all bookings in the current calendar year (including future ones), giving a full-year earnings forecast at a glance.
 
 **Expenses tab**
 - Drag-and-drop PDF receipt upload with auto-parsing for **Amazon** and **Walmart** order formats.

@@ -373,6 +373,11 @@ function bookingsPage() {
     FROM bookings b ORDER BY check_in DESC`).all();
 
   const totals = bookings.reduce((a, b) => ({ rev: a.rev + (b.payout||0), exp: a.exp + (b.expense_total||0) }), { rev: 0, exp: 0 });
+
+  const currentYear = new Date().getFullYear().toString();
+  const ytdBookings = bookings.filter(b => b.check_in && b.check_in.startsWith(currentYear));
+  const ytdGross    = ytdBookings.reduce((a, b) => a + (b.gross_revenue || 0), 0);
+
   const bookingOptions = bookings.map(b => `<option value="${b.id}">${b.guest_name} (${b.check_in})</option>`).join('');
 
   const rows = bookings.length ? bookings.map(b => `
@@ -408,6 +413,7 @@ function bookingsPage() {
   <div class="stat-card"><div class="stat-label">Total Payout</div><div class="stat-value pos">${fmt$(totals.rev)}</div></div>
   <div class="stat-card"><div class="stat-label">Rental Expenses</div><div class="stat-value neg">${fmt$(totals.exp)}</div></div>
   <div class="stat-card"><div class="stat-label">Net Profit</div><div class="stat-value ${totals.rev - totals.exp >= 0 ? 'pos' : 'neg'}">${fmt$(totals.rev - totals.exp)}</div></div>
+  <div class="stat-card" style="border-left:3px solid #667eea"><div class="stat-label">Potential YTD Gross Profit (${currentYear})</div><div class="stat-value ${ytdGross >= 0 ? 'pos' : 'neg'}">${fmt$(ytdGross)}</div></div>
 </div>
 
 <div class="card">
