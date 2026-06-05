@@ -4,6 +4,14 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-06-05] — Fix Walmart PDF detection and single-line format
+
+### Fixed
+- `expenses.js` — Walmart vendor detection now also triggers on `Order#` (no space), which is the identifier used in newer Walmart invoice PDFs that don't contain the string "walmart.com" in their text. Previously these fell through to "Unknown" and showed no line items.
+- `expenses.js` — Walmart parser now handles two item-line formats: (1) original two-line format `DescriptionQty N` / `$price` on next line, and (2) single-line format `DescriptionQty N$price` all on one line. Some Walmart invoices (e.g. Walmart_8, Walmart_9) use the single-line format. Both formats now parse correctly.
+
+---
+
 ## [2026-06-01] — Potential YTD Gross Profit tile on Bookings page
 
 ### Added

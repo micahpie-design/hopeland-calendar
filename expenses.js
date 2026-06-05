@@ -79,11 +79,18 @@ function parseWalmart(text) {
   if (om) result.orderNumber = om[1];
 
   for (let i = 0; i < lines.length; i++) {
-    // Item line: "Description textQty N" (no space before Qty), price "$X.XX" on next line
-    const im = lines[i].match(/^(.+?)Qty\s+(\d+)$/);
-    if (im) {
-      const desc = im[1].trim();
-      const qty  = parseInt(im[2]);
+    // Item line single-line format: "DescriptionQty N$price" (all on one line)
+    const im1 = lines[i].match(/^(.+?)Qty\s+(\d+)\$([0-9.]+)$/);
+    if (im1) {
+      const desc = im1[1].trim(), qty = parseInt(im1[2]), price = parseFloat(im1[3]);
+      result.items.push({ description: desc, quantity: qty, unit_price: price, total: +(price * qty).toFixed(2), is_rental: 1 });
+      continue;
+    }
+    // Item line two-line format: "DescriptionQty N" then "$price" on next line
+    const im2 = lines[i].match(/^(.+?)Qty\s+(\d+)$/);
+    if (im2) {
+      const desc = im2[1].trim();
+      const qty  = parseInt(im2[2]);
       let price  = 0;
       if (i + 1 < lines.length) {
         const pm = lines[i + 1].match(/^\$([0-9.]+)$/);
@@ -142,7 +149,7 @@ function parseAmazon(text) {
 async function parsePDF(filePath) {
   const data = await pdfParse(fs.readFileSync(filePath));
   const text = data.text;
-  if (text.toLowerCase().includes('walmart.com')) return parseWalmart(text);
+  if (text.toLowerCase().includes('walmart.com') || text.includes('Order#')) return parseWalmart(text);
   if (text.toLowerCase().includes('amazon.com') || text.includes('Grand Total:')) return parseAmazon(text);
   // Generic fallback — return raw text for manual entry
   return { vendor: 'Unknown', orderNumber: '', date: '', items: [], subtotal: 0, tax: 0, total: 0, rawText: text.slice(0, 2000) };

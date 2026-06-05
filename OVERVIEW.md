@@ -149,7 +149,7 @@ The local dashboard includes five tabs accessible from the nav bar:
 - Five stat cards: Total Bookings, Total Payout, Rental Expenses, Net Profit, and **Potential YTD Gross Profit** — sums gross revenue for all bookings in the current calendar year (including future ones), giving a full-year earnings forecast at a glance.
 
 **Expenses tab**
-- Drag-and-drop PDF receipt upload with auto-parsing for **Amazon** and **Walmart** order formats.
+- Drag-and-drop PDF receipt upload with auto-parsing for **Amazon** and **Walmart** order formats (handles both Walmart single-line and two-line item formats; detects Walmart invoices by `Order#` or `walmart.com` in the PDF text).
 - Each parsed line item gets: rental/personal checkbox, and a per-item category (Supplies / Consumables, Equipment / Capital, Cleaning, Maintenance, Other). Only rental-flagged items count toward tax-deductible expenses.
 - Expandable rows in the list show item detail with Rental/Personal and category badges.
 - Manual add fallback for receipts that don't parse automatically.
