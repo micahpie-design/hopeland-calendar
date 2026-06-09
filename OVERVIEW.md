@@ -150,6 +150,7 @@ The local dashboard includes five tabs accessible from the nav bar:
 
 **Expenses tab**
 - Drag-and-drop PDF receipt upload with auto-parsing for **Amazon** and **Walmart** order formats (handles both Walmart single-line and two-line item formats; detects Walmart invoices by `Order#` or `walmart.com` in the PDF text).
+- Manual add supports attaching a receipt file (PDF or photo — jpg, jpeg, png, webp) via drag-and-drop or click-to-select. Useful for vendors like grocery stores that don't auto-parse. Attached receipt shows as a "📄 View" link in the expense list.
 - Each parsed line item gets: rental/personal checkbox, and a per-item category (Supplies / Consumables, Equipment / Capital, Cleaning, Maintenance, Other). Only rental-flagged items count toward tax-deductible expenses.
 - Expandable rows in the list show item detail with Rental/Personal and category badges.
 - Manual add fallback for receipts that don't parse automatically.

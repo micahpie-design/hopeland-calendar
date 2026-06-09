@@ -4,6 +4,13 @@ All changes to this project are documented here.
 
 ---
 
+## [2026-06-09] — Receipt attachment on manual expense entry
+
+### Added
+- `expenses.js` — Manual Add Expense modal now includes a drag-and-drop / click-to-select file zone for attaching a receipt (PDF or photo: jpg, jpeg, png, webp). File is uploaded to `uploads/receipts/` via the existing `/api/parse-pdf` endpoint (parse result is ignored; only the saved filename is used). The attached receipt shows as a "📄 View" link in the expense list, same as auto-parsed receipts. Added `.webp` to the static file server MIME map so phone photos open correctly.
+
+---
+
 ## [2026-06-05] — Fix Walmart PDF detection and single-line format
 
 ### Fixed

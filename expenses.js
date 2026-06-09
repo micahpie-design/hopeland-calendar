@@ -755,8 +755,20 @@ function expensesPage() {
       <div class="field"><label>Tax ($)</label><input id="m-tax" type="number" step="0.01" placeholder="0.00" /></div>
     </div>
     <div class="field" style="margin-top:12px"><label>Notes</label><textarea id="m-notes" rows="2"></textarea></div>
+    <div class="field" style="margin-top:12px">
+      <label>Receipt (PDF or photo — optional)</label>
+      <div id="m-file-zone"
+           style="border:2px dashed #4a5568;border-radius:6px;padding:12px;text-align:center;cursor:pointer;font-size:.83rem;color:#718096;margin-top:4px"
+           onclick="document.getElementById('m-file-input').click()"
+           ondragover="event.preventDefault();this.style.borderColor='#4299e1'"
+           ondragleave="this.style.borderColor='#4a5568'"
+           ondrop="handleManualFileDrop(event)">
+        📎 Click or drag to attach a receipt
+      </div>
+      <input type="file" id="m-file-input" accept=".pdf,.jpg,.jpeg,.png,.webp" style="display:none" onchange="setManualFile(this.files[0])">
+    </div>
     <div class="modal-actions">
-      <button class="btn btn-secondary" onclick="document.getElementById('manual-modal').classList.remove('open')">Cancel</button>
+      <button class="btn btn-secondary" onclick="closeManualModal()">Cancel</button>
       <button class="btn btn-primary" onclick="saveManualExpense()">Save</button>
     </div>
   </div>
@@ -832,9 +844,46 @@ async function saveExpense() {
   if (r.id) { location.reload(); } else { showMsg(r.error || 'Error saving.', 'err'); }
 }
 
+let manualReceiptFile = null;
+
+function setManualFile(file) {
+  manualReceiptFile = file;
+  const zone = document.getElementById('m-file-zone');
+  zone.textContent = '📎 ' + file.name;
+  zone.style.borderColor = '#48bb78';
+  zone.style.color = '#276749';
+}
+
+function handleManualFileDrop(e) {
+  e.preventDefault();
+  document.getElementById('m-file-zone').style.borderColor = '#4a5568';
+  const file = e.dataTransfer.files[0];
+  if (file) setManualFile(file);
+}
+
+function closeManualModal() {
+  manualReceiptFile = null;
+  const zone = document.getElementById('m-file-zone');
+  zone.textContent = '📎 Click or drag to attach a receipt';
+  zone.style.borderColor = '#4a5568';
+  zone.style.color = '#718096';
+  document.getElementById('m-file-input').value = '';
+  document.getElementById('manual-modal').classList.remove('open');
+}
+
 async function saveManualExpense() {
   const amount = parseFloat(document.getElementById('m-amount').value) || 0;
   const tax    = parseFloat(document.getElementById('m-tax').value) || 0;
+
+  let receiptFilename = null;
+  if (manualReceiptFile) {
+    const fd = new FormData();
+    fd.append('receipt', manualReceiptFile);
+    const r = await fetch('/api/parse-pdf', { method: 'POST', body: fd });
+    const data = await r.json();
+    if (data.filename) receiptFilename = data.filename;
+  }
+
   const body = {
     booking_id:   document.getElementById('m-booking').value || null,
     date:         document.getElementById('m-date').value,
@@ -845,6 +894,7 @@ async function saveManualExpense() {
     subtotal:     amount,
     tax,
     total:        +(amount + tax).toFixed(2),
+    receipt_file: receiptFilename,
     items: [{ description: document.getElementById('m-desc').value.trim() || 'Expense', quantity: 1, unit_price: amount, total: amount, is_rental: 1 }],
   };
   const r = await api('POST', '/api/expenses', body);
@@ -1278,7 +1328,7 @@ module.exports = async function handleRequest(req, res) {
     const filePath = path.join(__dirname, p);
     if (fs.existsSync(filePath)) {
       const ext = path.extname(filePath).toLowerCase();
-      const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.pdf': 'application/pdf' };
+      const mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.gif': 'image/gif', '.webp': 'image/webp', '.pdf': 'application/pdf' };
       res.writeHead(200, { 'Content-Type': mime[ext] || 'application/octet-stream' });
       fs.createReadStream(filePath).pipe(res);
     } else { res.writeHead(404); res.end(); }
